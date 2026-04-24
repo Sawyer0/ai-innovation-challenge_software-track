@@ -1,6 +1,6 @@
 # BMCC Academic Advisement Backend
 
-AI-powered backend for BMCC course recommendations, prerequisite checking, and academic advisement. Built with FastAPI, SQLite, and OpenAI.
+AI-powered backend for BMCC course recommendations, prerequisite checking, and academic advisement. Built with FastAPI, SQLite, and Google Gemini.
 
 ## Features
 
@@ -25,7 +25,7 @@ pip install -r requirements.txt
 
 # 4. Set up environment
 cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
+# Edit .env and add your GEMINI_API_KEY
 
 # 5. Initialize database and import catalog
 python -m app.scripts.import_catalog
@@ -97,7 +97,7 @@ curl -X POST http://localhost:8000/api/advisement \
 
 ```env
 # Required
-OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=your-key-here
 
 # Optional (defaults shown)
 DATABASE_URL=sqlite:///./bmcc_catalog.db
