@@ -60,14 +60,20 @@ async def advisement(
         for c in planned_courses_list
     )
 
+    # Treat in-progress courses as satisfying prerequisites (the student is enrolled)
+    courses_for_prereqs = list(set(completed_courses + in_progress_courses))
+
     # Get remaining requirements and check eligibility
-    remaining_reqs = prereq_service.get_remaining_requirements(profile.program_code, completed_courses) if profile.program_code else []
+    remaining_reqs = prereq_service.get_remaining_requirements(profile.program_code, courses_for_prereqs) if profile.program_code else []
 
     # Get full course details from database for available courses
+    seen_codes: set[str] = set()
     available_courses = []
     for req in remaining_reqs:
-        if prereq_service.check_prerequisites(req, completed_courses):
-            # Query database for actual course title
+        if req in seen_codes:
+            continue
+        if prereq_service.check_prerequisites(req, courses_for_prereqs):
+            seen_codes.add(req)
             course_db = db.query(models.Course).filter(models.Course.code == req).first()
             available_courses.append({
                 "code": req,
@@ -110,13 +116,18 @@ async def advisement(
             },
         )
 
-    # Pass compliance status as context to the AI (no warnings needed — guardrails already passed)
+    # Build compliance context for the AI — tell it what credit load is required
     warnings = []
-    if profile.financial_aid_type:
-        warnings.append(
-            f"Student is compliant with {profile.financial_aid_type} requirements "
-            f"({current_planned_credits} planned credits)."
-        )
+    if profile.financial_aid_type in ("pell",):
+        warnings.append("Pell Grant: recommend at least 6 credits (half-time) to receive any award, 12 credits (full-time) for the full award.")
+    if profile.financial_aid_type in ("tap", "both"):
+        warnings.append("TAP: must recommend exactly 12+ credits of degree-applicable courses (full-time required).")
+    if profile.financial_aid_type == "both":
+        warnings.append("Pell Grant: 12 credits = 100% award; fewer credits = prorated award.")
+    if profile.student_type == "international":
+        warnings.append("F-1 visa: must recommend at least 12 credits with no more than 1 online/hybrid course.")
+    if not warnings:
+        warnings.append("No financial aid or visa constraints — recommend a standard full-time load (12–15 credits).")
 
     response = await ai_service.generate_advisement(
         profile=profile,
@@ -138,11 +149,16 @@ async def advisement(
         db=db,
     )
 
+    # Pell proration: use the credits the AI actually recommended, not pre-existing planned courses
+    recommended_credits = sum(c.credits for c in response.recommended_courses)
     proration_data = calculate_pell_proration(
         financial_aid_type=profile.financial_aid_type,
-        planned_credits=current_planned_credits,
+        planned_credits=recommended_credits,
     )
     if proration_data:
         response.pell_proration = schemas.PellProration(**proration_data)
+
+    # Update total_planned_credits in the response to reflect AI recommendations
+    response.total_planned_credits = recommended_credits
 
     return response
