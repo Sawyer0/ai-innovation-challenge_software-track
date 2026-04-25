@@ -57,6 +57,26 @@ export async function setProfile(
   });
 }
 
+export async function saveParsedCourses(
+  sessionId: string,
+  courses: import("../types").ParsedCourse[]
+): Promise<{ saved: number; total: number }> {
+  return request(`/api/session/${sessionId}/courses/bulk`, {
+    method: "POST",
+    body: JSON.stringify(
+      courses.map((c) => ({
+        course_code: c.course_code,
+        course_title: c.course_title,
+        semester_taken: c.semester_taken ?? null,
+        status: c.status,
+        grade: c.grade ?? null,
+        credits: c.credits ?? 0,
+        source: "transcript",
+      }))
+    ),
+  });
+}
+
 // ── Transcript ────────────────────────────────────────────────────────────────
 
 export async function uploadTranscript(
