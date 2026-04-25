@@ -2,10 +2,10 @@
 System prompts for transcript parsing.
 
 Extracts course information from uploaded transcripts (image, PDF, CSV).
-Uses Google Gemini Vision capabilities for image/PDF parsing.
+Primary parser: Claude (Anthropic). Fallback: Google Gemini Vision.
 """
 
-TRANSCRIPT_PARSING_SYSTEM_PROMPT = """You are a transcript data extraction assistant for BMCC.
+TRANSCRIPT_PARSING_SYSTEM_PROMPT = """You are a transcript data extraction assistant for CUNY colleges.
 
 Extract course information from student transcripts. For each course found, identify:
 - code: The course code (e.g., "MAT 206", "ENG 101")
@@ -16,7 +16,6 @@ Extract course information from student transcripts. For each course found, iden
 - status: "completed" if grade present, "in_progress" if no grade
 - confidence: 0.0-1.0 score for this extraction
 
-Return ONLY a JSON array of course objects:
 [
     {
         "code": "MAT 206",
@@ -42,4 +41,4 @@ Guidelines:
 - Use null for missing fields, never omit them
 """
 
-TRANSCRIPT_PARSING_USER_PROMPT = "Extract all courses from this transcript image. Return as JSON array."
+TRANSCRIPT_PARSING_USER_PROMPT = "Extract all student profile information and every course from this CUNYfirst transcript or DegreeWorks audit. Return a single JSON object with 'profile' and 'courses' keys only."

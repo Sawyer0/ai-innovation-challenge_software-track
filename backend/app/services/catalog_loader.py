@@ -13,6 +13,12 @@ from decimal import Decimal
 class ScrapedPrerequisite(BaseModel):
     text: Optional[str] = None
 
+class ScrapedComponent(BaseModel):
+    type: Optional[str] = None
+    contact_hours: Optional[Any] = None
+    workload_hours: Optional[Any] = None
+    instruction_mode: Optional[str] = None
+
 class ScrapedCourse(BaseModel):
     code: str = Field(..., max_length=20)
     title: str = Field(default="", max_length=255)
@@ -23,6 +29,7 @@ class ScrapedCourse(BaseModel):
     department: Optional[str] = Field(None, max_length=100)
     hegis_code: Optional[str] = Field(None, max_length=20)
     typically_offered: Optional[str] = Field(None, max_length=100)
+    components: Optional[List[ScrapedComponent]] = []
     prerequisites: Optional[List[ScrapedPrerequisite]] = []
 
 class ScrapedElectiveGroup(BaseModel):
@@ -84,6 +91,74 @@ class ScrapedRules(BaseModel):
 
 # ----------------------------------------------------
 
+# Enrollment status rules per CUNY policy (used by seed_policy_data as fallback)
+_ENROLLMENT_STATUS_RULES = [
+    dict(status_name="full-time",           min_credits=12, max_credits=18, description="Full-time (12–18 credits)"),
+    dict(status_name="half-time",           min_credits=6,  max_credits=11, description="Half-time (6–11 credits)"),
+    dict(status_name="less-than-half-time", min_credits=0,  max_credits=5,  description="Less than half-time (0–5 credits)"),
+]
+
+# Financial aid credit minimums per CUNY/federal rules
+_FINANCIAL_AID_CONSTRAINTS = [
+    dict(
+        aid_type="pell",
+        min_credits_required=6,
+        min_status_required="half-time",
+        warning_message=(
+            "Your Pell Grant requires at least 6 credits (half-time enrollment). "
+            "Dropping below 6 credits will reduce or eliminate your award. "
+            "Please add more courses or speak with a financial aid advisor before registering."
+        ),
+        block_underload=True,
+        allow_exception_process=True,
+    ),
+    dict(
+        aid_type="tap",
+        min_credits_required=12,
+        min_status_required="full-time",
+        warning_message=(
+            "TAP (Tuition Assistance Program) requires full-time enrollment of at least 12 credits. "
+            "Dropping below 12 credits will result in loss of TAP funding for this semester. "
+            "Please add more courses or speak with a financial aid advisor before registering."
+        ),
+        block_underload=True,
+        allow_exception_process=True,
+    ),
+    dict(
+        aid_type="both",
+        min_credits_required=12,
+        min_status_required="full-time",
+        warning_message=(
+            "You receive both Pell Grant and TAP. TAP requires full-time enrollment (12+ credits). "
+            "Dropping below 12 credits will affect both awards. "
+            "Please speak with a financial aid advisor before making any schedule changes."
+        ),
+        block_underload=True,
+        allow_exception_process=True,
+    ),
+]
+
+
+def seed_policy_data(db: Session) -> None:
+    """Idempotently inserts enrollment status rules and financial aid constraints."""
+    for rule_data in _ENROLLMENT_STATUS_RULES:
+        exists = db.query(EnrollmentStatusRule).filter(
+            EnrollmentStatusRule.status_name == rule_data["status_name"]
+        ).first()
+        if not exists:
+            db.add(EnrollmentStatusRule(**rule_data))
+
+    for constraint_data in _FINANCIAL_AID_CONSTRAINTS:
+        exists = db.query(FinancialAidConstraint).filter(
+            FinancialAidConstraint.aid_type == constraint_data["aid_type"]
+        ).first()
+        if not exists:
+            db.add(FinancialAidConstraint(**constraint_data))
+
+    db.commit()
+    print("Policy data seeded (enrollment rules + financial aid constraints).")
+
+
 def load_catalog(json_path: str):
     print(f"Loading catalog from {json_path}...")
     with open(json_path, 'r', encoding='utf-8') as f:
@@ -107,18 +182,25 @@ def load_catalog(json_path: str):
     try:
         # Load Courses
         print(f"Found {len(data.courses)} courses. Inserting...")
-        course_map = {} # code -> Course object
+        course_map = {}
         seen_codes = set()
-        
+
         for c_data in data.courses:
             if c_data.code in seen_codes:
                 continue
             seen_codes.add(c_data.code)
-            
+
             try:
                 credit_val = Decimal(str(c_data.credits))
             except Exception:
                 credit_val = Decimal(0)
+
+            # Derive instruction_mode from the first component that has one
+            instruction_mode = None
+            for comp in (c_data.components or []):
+                if comp.instruction_mode and comp.instruction_mode.strip():
+                    instruction_mode = comp.instruction_mode.strip()
+                    break
 
             course = Course(
                 code=c_data.code,
@@ -146,7 +228,7 @@ def load_catalog(json_path: str):
             course = course_map.get(c_data.code)
             if not course or not c_data.prerequisites:
                 continue
-                
+
             for prereq in c_data.prerequisites:
                 text = prereq.text.strip() if prereq.text else ""
                 if not text:
@@ -177,7 +259,7 @@ def load_catalog(json_path: str):
             if p_data.programCode in seen_programs:
                 continue
             seen_programs.add(p_data.programCode)
-            
+
             program = Program(
                 program_code=p_data.programCode,
                 name=p_data.name,
@@ -188,12 +270,11 @@ def load_catalog(json_path: str):
                 hegis_code=p_data.hegisCode,
             )
             db.add(program)
-            db.commit() # commit to get program.id
-            
+            db.commit()  # commit to get program.id
+
             # Load Program Requirements (Degree Map)
             if p_data.semesters:
                 for sem in p_data.semesters:
-                    # Required Courses
                     for req_course_code in sem.required_courses:
                         matched = code_index.lookup(req_course_code)
                         wildcard = parse_wildcard(req_course_code)
@@ -211,8 +292,7 @@ def load_catalog(json_path: str):
                             wildcard_level=wildcard["level"] if wildcard else None
                         )
                         db.add(pr)
-                        
-                    # Elective Groups
+
                     for elect_group in sem.elective_groups:
                         for elect_course_code in elect_group.courses:
                             matched = code_index.lookup(elect_course_code)
@@ -231,9 +311,12 @@ def load_catalog(json_path: str):
                                 wildcard_level=wildcard["level"] if wildcard else None
                             )
                             db.add(pr)
-                        
+
         db.commit()
         print("Programs and Degree Maps inserted successfully.")
+
+        print("Seeding policy data...")
+        seed_policy_data(db)
 
     except Exception as e:
         db.rollback()
