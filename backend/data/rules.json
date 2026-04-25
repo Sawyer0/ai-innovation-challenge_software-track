@@ -1,28 +1,28 @@
 {
   "enrollment_status_rules": [
     {
-      "status_name": "full-time",
+      "status_name": "Full-time",
       "min_credits": 12.0,
       "max_credits": 18.0,
       "description": "Standard full-time enrollment for Fall/Spring semesters.",
       "is_default": true
     },
     {
-      "status_name": "three-quarter-time",
+      "status_name": "Three-Quarter Time",
       "min_credits": 9.0,
       "max_credits": 11.9,
       "description": "9 to 11.9 credits.",
       "is_default": false
     },
     {
-      "status_name": "half-time",
+      "status_name": "Half-time",
       "min_credits": 6.0,
       "max_credits": 8.9,
       "description": "6 to 8.9 credits. Minimum for most federal loans.",
       "is_default": false
     },
     {
-      "status_name": "less-than-half-time",
+      "status_name": "Less than Half-time",
       "min_credits": 1.0,
       "max_credits": 5.9,
       "description": "1 to 5.9 credits.",
@@ -31,41 +31,33 @@
   ],
   "financial_aid_constraints": [
     {
-      "aid_type": "pell",
-      "min_credits_required": 6.0,
-      "min_status_required": "half-time",
-      "warning_message": "Your Pell Grant requires at least 6 credits (half-time enrollment). Dropping below 6 credits will reduce or eliminate your award. Please add more courses or speak with a financial aid advisor before registering.",
-      "block_underload": true,
-      "allow_exception_process": true
-    },
-    {
-      "aid_type": "tap",
+      "aid_type": "Pell Grant",
       "min_credits_required": 12.0,
-      "min_status_required": "full-time",
-      "warning_message": "TAP (Tuition Assistance Program) requires full-time enrollment of at least 12 credits. Dropping below 12 credits will result in loss of TAP funding for this semester. Please add more courses or speak with a financial aid advisor before registering.",
-      "block_underload": true,
+      "min_status_required": "Full-time",
+      "warning_message": "Dropping below 12 credits will reduce your Pell Grant to a prorated amount. Dropping below 6 credits may cancel it entirely for the semester.",
+      "block_underload": false,
       "allow_exception_process": true
     },
     {
-      "aid_type": "both",
+      "aid_type": "TAP (NY State)",
       "min_credits_required": 12.0,
-      "min_status_required": "full-time",
-      "warning_message": "You receive both Pell Grant and TAP. TAP requires full-time enrollment (12+ credits). Dropping below 12 credits will affect both awards. Please speak with a financial aid advisor before making any schedule changes.",
+      "min_status_required": "Full-time",
+      "warning_message": "TAP requires full-time enrollment (12+ credits) in courses that count specifically towards your degree requirements (CPOS).",
       "block_underload": true,
-      "allow_exception_process": true
+      "allow_exception_process": false
     },
     {
-      "aid_type": "excelsior",
+      "aid_type": "Excelsior Scholarship",
       "min_credits_required": 15.0,
-      "min_status_required": "full-time",
+      "min_status_required": "Full-time",
       "warning_message": "Excelsior requires you to earn 30 credits per academic year. We recommend 15 credits per semester to stay on track.",
       "block_underload": false,
       "allow_exception_process": true
     },
     {
-      "aid_type": "loans",
+      "aid_type": "Federal Student Loans",
       "min_credits_required": 6.0,
-      "min_status_required": "half-time",
+      "min_status_required": "Half-time",
       "warning_message": "You must be enrolled at least half-time (6 credits) to receive federal student loans.",
       "block_underload": true,
       "allow_exception_process": false
@@ -81,7 +73,7 @@
         "requires_gpa": 3.0,
         "requires_approval": true
       },
-      "applies_to_student_types": ["freshman", "sophomore"],
+      "applies_to_classifications": ["freshman", "sophomore", "junior", "senior"],
       "priority": 10,
       "is_active": true
     },
@@ -92,7 +84,7 @@
       "rule_logic": {
         "max_credits": 12.0
       },
-      "applies_to_student_types": ["probation"],
+      "applies_to_academic_standings": ["probation"],
       "priority": 5,
       "is_active": true
     },

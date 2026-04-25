@@ -187,8 +187,8 @@ class TestProgramEndpoints:
 class TestAdvisementEndpoints:
     """Test AI advisement flow with mocked Gemini."""
     
-    @patch('app.services.ai_service.genai.Client')
-    def test_get_eligible_courses(self, mock_gemini, client, db):
+    @patch('app.infrastructure.ai.client.genai.Client')
+    def test_get_eligible_courses(self, mock_client_class, client, db):
         """GET /api/advisement/eligible returns courses student can take."""
         from app import models
         
@@ -245,10 +245,13 @@ class TestAdvisementEndpoints:
         # MAT 206 should be eligible (prereq satisfied)
         assert "MAT 206" in data["eligible_courses"]
     
-    @patch('app.services.ai_service.genai.Client')
+    @patch('app.infrastructure.ai.client.genai.Client')
     def test_advisement_endpoint(self, mock_client_class, client, db):
         """POST /api/advisement returns AI-generated response."""
-        # Mock Gemini response
+        # Reset singleton and mock Gemini response
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
+
         mock_client = Mock()
         mock_response = Mock()
         mock_response.text = "Since you've completed MAT 157, you can take MAT 206 this Fall."
@@ -294,31 +297,48 @@ class TestAdvisementEndpoints:
 class TestTranscriptEndpoints:
     """Test transcript upload flow."""
     
-    @patch('app.parsers.transcript_parser.client')
-    def test_upload_image_parsed_and_saved(self, mock_gemini_client, client, db):
-        """Upload image -> Gemini parses -> courses saved to DB."""
+    @patch('app.services.parser_service.detect_and_parse')
+    def test_upload_image_parsed_and_saved(self, mock_detect_and_parse, client, db):
+        """Upload PDF -> Parser parses -> courses saved to DB."""
         from io import BytesIO
-        
-        # Mock Gemini response
-        mock_response = Mock()
-        mock_response.text = '''[{"course_code": "MAT 206", "semester_taken": "Fall 2023", "status": "completed", "grade": "B+", "credits": 4}]'''
-        mock_gemini_client.models.generate_content.return_value = mock_response
-        
+        import os
+
+        # Mock the parser to return structured data
+        mock_detect_and_parse.return_value = {
+            "source": "transcript",
+            "confidence": 0.9,
+            "student": {},
+            "courses": {
+                "completed": [{"course_code": "MAT 206", "semester_taken": "Fall 2023", "status": "completed", "grade": "B+", "credits": 4}],
+                "in_progress": [],
+                "still_needed": [],
+                "fall_through": []
+            },
+            "all_courses": [{"course_code": "MAT 206", "semester_taken": "Fall 2023", "status": "completed", "grade": "B+", "credits": 4}],
+            "requirements": [],
+            "validated": [{"course_code": "MAT 206", "semester_taken": "Fall 2023", "status": "completed", "grade": "B+", "credits": 4}],
+            "flagged": [],
+            "invalid": [],
+            "requires_confirmation": False
+        }
+
         # Create session
         session_id = client.post("/api/session").json()["session_id"]
-        
-        # Upload fake image
-        fake_image = BytesIO(b"fake image data for testing")
-        response = client.post(
-            f"/api/session/{session_id}/transcript",
-            files={"file": ("transcript.png", fake_image, "image/png")}
-        )
-        
+
+        # Upload actual PDF file
+        pdf_path = os.path.join(os.path.dirname(__file__), "../../assets/degree-works-ds.pdf")
+        with open(pdf_path, "rb") as pdf_file:
+            response = client.post(
+                f"/api/session/{session_id}/transcript",
+                files={"file": ("degree-works-ds.pdf", pdf_file, "application/pdf")}
+            )
+
         assert response.status_code == 200
         data = response.json()
         assert "Successfully parsed" in data["message"]
-        assert data["courses"][0]["course_code"] == "MAT 206"
-        
+        assert len(data["all_courses"]) == 1
+        assert data["all_courses"][0]["course_code"] == "MAT 206"
+
         # Verify saved to DB
         session_data = client.get(f"/api/session/{session_id}").json()
         assert len(session_data["courses"]) == 1

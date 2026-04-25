@@ -1,29 +1,90 @@
 from typing import List, Dict, Any
 from fastapi import UploadFile
-from ..parsers.transcript_parser import parse_transcript
+from ..parsers.file_detector import detect_and_parse
+from ..parsers.validators import deduplicate_courses, normalize_course_code
 from .session_service import SessionService
+
 
 class ParserService:
     def __init__(self, session_service: SessionService):
         self.session_service = session_service
 
-    async def parse_and_save(self, file: UploadFile, session_id: str) -> Dict[str, Any]:
+    async def parse_upload(self, file: UploadFile) -> Dict[str, Any]:
         """
-        Parse transcript and save courses to the session.
-        Returns {profile: {...}, courses: [...]} — profile contains hints
-        extracted from the transcript header (school, program, GPA, etc.)
-        that the frontend can use to prefill the profile form.
+        Parse uploaded file (auto-detect type) and return structured data.
+        
+        Returns:
+            Dict with source, confidence, student, courses, etc.
         """
-        result = await parse_transcript(file)
-        courses = result.get("courses") or []
-        profile_hints = result.get("profile") or {}
+        result = await detect_and_parse(file)
+        return result
 
-        # Drop any entries the AI returned without a course code — they would
-        # violate the NOT NULL constraint and cause a 500 on save.
-        valid_courses = [c for c in courses if isinstance(c, dict) and c.get("course_code")]
-        for course in valid_courses:
-            course["source"] = "transcript"
+    async def parse_and_save(
+        self, 
+        file: UploadFile, 
+        session_id: str,
+        confirm: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Parse uploaded file and optionally save to session.
+        
+        Two-step flow:
+        1. POST /upload (confirm=False) - parse only, return preview
+        2. POST /upload/confirm (confirm=True) - parse and save
+        
+        Args:
+            file: Uploaded file (PDF, image, CSV)
+            session_id: Student session ID
+            confirm: If True, save courses to session
+            
+        Returns:
+            Parsed data with save status
+        """
+        result = await self.parse_upload(file)
+        
+        # Add source to each course
+        all_courses = result.get("all_courses", [])
+        source = result.get("source", "unknown")
+        for course in all_courses:
+            course["source"] = source
+        
+        # Save if confirmed
+        if confirm and all_courses:
+            self.session_service.add_courses_bulk(session_id, all_courses)
+            result["saved"] = True
+            result["saved_count"] = len(all_courses)
+        else:
+            result["saved"] = False
+            result["saved_count"] = 0
+        
+        return result
 
-        self.session_service.add_courses_bulk(session_id, valid_courses)
-
-        return {"profile": profile_hints, "courses": valid_courses}
+    async def confirm_and_save(
+        self,
+        courses: List[Dict[str, Any]],
+        session_id: str
+    ) -> Dict[str, Any]:
+        """
+        Confirm and save courses from previous parse.
+        
+        Args:
+            courses: List of course dicts to save
+            session_id: Student session ID
+            
+        Returns:
+            Save status
+        """
+        if not courses:
+            return {"saved": False, "saved_count": 0, "message": "No courses to save"}
+        
+        # Deduplicate and normalize
+        deduplicated = deduplicate_courses(courses)
+        
+        # Save to session
+        self.session_service.add_courses_bulk(session_id, deduplicated)
+        
+        return {
+            "saved": True,
+            "saved_count": len(deduplicated),
+            "message": f"Successfully saved {len(deduplicated)} courses"
+        }
