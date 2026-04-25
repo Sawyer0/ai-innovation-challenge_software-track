@@ -78,6 +78,8 @@ class ScrapedAcademicPolicy(BaseModel):
     description: str
     rule_logic: Optional[dict] = None
     applies_to_student_types: Optional[List[str]] = None
+    applies_to_classifications: Optional[List[str]] = None
+    applies_to_academic_standings: Optional[List[str]] = None
     applies_to_programs: Optional[List[str]] = None
     priority: int = 100
     is_active: bool = True
@@ -210,8 +212,6 @@ def load_catalog(json_path: str):
                 department=c_data.department,
                 hegis_code=c_data.hegis_code,
                 typically_offered=c_data.typically_offered,
-                instruction_mode=instruction_mode,
-                raw_data=c_data.model_dump()
             )
             db.add(course)
             course_map[course.code] = course
@@ -220,7 +220,7 @@ def load_catalog(json_path: str):
 
         # Build fuzzy lookup index for course codes
         code_index = CourseCodeIndex(course_map)
-
+        
         # Load Prerequisites
         print("Loading prerequisites...")
         prereq_count = 0
@@ -233,7 +233,7 @@ def load_catalog(json_path: str):
                 text = prereq.text.strip() if prereq.text else ""
                 if not text:
                     continue
-
+                
                 parsed_entries = parse_prerequisite_text(text)
                 for entry in parsed_entries:
                     cp = CoursePrerequisite(
@@ -248,7 +248,7 @@ def load_catalog(json_path: str):
                     )
                     db.add(cp)
                     prereq_count += 1
-
+                
         db.commit()
         print(f"Inserted {prereq_count} prerequisites.")
 
@@ -268,7 +268,6 @@ def load_catalog(json_path: str):
                 degree=p_data.degree,
                 department=p_data.department,
                 hegis_code=p_data.hegisCode,
-                raw_data=p_data.model_dump()
             )
             db.add(program)
             db.commit()  # commit to get program.id
@@ -279,7 +278,7 @@ def load_catalog(json_path: str):
                     for req_course_code in sem.required_courses:
                         matched = code_index.lookup(req_course_code)
                         wildcard = parse_wildcard(req_course_code)
-
+                        
                         pr = ProgramRequirement(
                             program_id=program.id,
                             course_code=req_course_code,
@@ -298,7 +297,7 @@ def load_catalog(json_path: str):
                         for elect_course_code in elect_group.courses:
                             matched = code_index.lookup(elect_course_code)
                             wildcard = parse_wildcard(elect_course_code)
-
+                            
                             pr = ProgramRequirement(
                                 program_id=program.id,
                                 course_code=elect_course_code,
@@ -327,9 +326,7 @@ def load_catalog(json_path: str):
     finally:
         db.close()
 
-
 def load_rules(json_path: str):
-    """Import rules.json into the database, replacing existing rules."""
     print(f"Loading rules from {json_path}...")
     if not os.path.exists(json_path):
         print(f"Warning: Rules file not found at {json_path}")
@@ -347,10 +344,12 @@ def load_rules(json_path: str):
 
     db: Session = SessionLocal()
     try:
+        # Clear existing rules to avoid duplicates on re-import
         db.query(EnrollmentStatusRule).delete()
         db.query(FinancialAidConstraint).delete()
         db.query(AcademicPolicy).delete()
 
+        # Load Enrollment Rules
         for r in data.enrollment_status_rules:
             db.add(EnrollmentStatusRule(
                 status_name=r.status_name,
@@ -360,6 +359,7 @@ def load_rules(json_path: str):
                 is_default=r.is_default
             ))
 
+        # Load Aid Constraints
         for a in data.financial_aid_constraints:
             db.add(FinancialAidConstraint(
                 aid_type=a.aid_type,
@@ -370,6 +370,7 @@ def load_rules(json_path: str):
                 allow_exception_process=a.allow_exception_process
             ))
 
+        # Load Academic Policies
         for p in data.academic_policies:
             db.add(AcademicPolicy(
                 policy_type=p.policy_type,
@@ -377,6 +378,8 @@ def load_rules(json_path: str):
                 description=p.description,
                 rule_logic=p.rule_logic,
                 applies_to_student_types=p.applies_to_student_types,
+                applies_to_classifications=p.applies_to_classifications,
+                applies_to_academic_standings=p.applies_to_academic_standings,
                 applies_to_programs=p.applies_to_programs,
                 priority=p.priority,
                 is_active=p.is_active
@@ -389,7 +392,6 @@ def load_rules(json_path: str):
         print(f"Error loading rules: {e}")
     finally:
         db.close()
-
 
 if __name__ == "__main__":
     catalog_path = os.path.join(os.path.dirname(__file__), "../../../bmcc-catalog.json")
