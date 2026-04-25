@@ -44,7 +44,7 @@ export class ComplianceError extends Error {
 // ── Session ───────────────────────────────────────────────────────────────────
 
 export async function createSession(): Promise<SessionResponse> {
-  return request<SessionResponse>("/api/session", { method: "POST" });
+  return request<SessionResponse>("/api/session/", { method: "POST" });
 }
 
 export async function setProfile(

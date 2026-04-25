@@ -3,9 +3,9 @@ import Intake from "./pages/Intake";
 import Results from "./pages/Results";
 import ComplianceAlert from "./components/ComplianceAlert";
 import { createSession, setProfile, getAdvisement, ComplianceError } from "./api/client";
-import type { AdvisementResponse, ComplianceViolation, StudentProfile } from "./types";
+import type { AdvisementResponse, ComplianceViolation, StudentProfile, TranscriptProfileHints, ParsedCourse } from "./types";
 
-type AppState = "intake" | "loading" | "results" | "compliance_error";
+type AppState = "intake" | "loading" | "results";
 
 export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -13,6 +13,9 @@ export default function App() {
   const [result, setResult] = useState<AdvisementResponse | null>(null);
   const [violation, setViolation] = useState<ComplianceViolation | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Lifted here so transcript data survives compliance errors
+  const [prefill, setPrefill] = useState<TranscriptProfileHints | undefined>();
+  const [parsedCourses, setParsedCourses] = useState<ParsedCourse[]>([]);
 
   useEffect(() => {
     createSession()
@@ -26,6 +29,7 @@ export default function App() {
     if (!sessionId) return;
     setAppState("loading");
     setError(null);
+    setViolation(null);
 
     try {
       await setProfile(sessionId, profile);
@@ -38,7 +42,7 @@ export default function App() {
     } catch (e) {
       if (e instanceof ComplianceError) {
         setViolation(e.violation);
-        setAppState("compliance_error");
+        setAppState("intake"); // stay on intake so the form is still there
       } else {
         setError(e instanceof Error ? e.message : "Something went wrong.");
         setAppState("intake");
@@ -50,6 +54,8 @@ export default function App() {
     setResult(null);
     setViolation(null);
     setError(null);
+    setPrefill(undefined);
+    setParsedCourses([]);
     setAppState("intake");
     createSession()
       .then((s) => setSessionId(s.session_id))
@@ -89,20 +95,25 @@ export default function App() {
         )}
 
         {(appState === "intake" || appState === "loading") && sessionId && (
-          <Intake
-            sessionId={sessionId}
-            onSubmit={handleProfileSubmit}
-            loading={appState === "loading"}
-          />
-        )}
-
-        {appState === "compliance_error" && violation && (
-          <div className="compliance-error-page">
-            <ComplianceAlert
-              violation={violation}
-              onDismiss={() => setAppState("intake")}
+          <>
+            {violation && (
+              <ComplianceAlert
+                violation={violation}
+                onDismiss={() => setViolation(null)}
+              />
+            )}
+            <Intake
+              sessionId={sessionId}
+              onSubmit={handleProfileSubmit}
+              loading={appState === "loading"}
+              prefill={prefill}
+              parsedCourses={parsedCourses}
+              onParsed={(result) => {
+                setPrefill(result.profile);
+                setParsedCourses(result.courses);
+              }}
             />
-          </div>
+          </>
         )}
 
         {appState === "results" && result && (

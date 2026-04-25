@@ -11,9 +11,6 @@ from ..prompts import (
     ADVISEMENT_USER_PROMPT_TEMPLATE,
 )
 from ..utils import get_next_semester, calculate_remaining_credits
-from ..infrastructure.ai import get_ai_client, AIError
-
-
 _claude_client: Optional[anthropic.Anthropic] = None
 _gemini_client: Optional[genai.Client] = None
 
@@ -68,9 +65,6 @@ def _parse_advisement(raw: dict, next_semester: str, planned_credits: float) -> 
 
 class AIService:
     """Service for AI-powered advisement generation."""
-
-    def __init__(self):
-        self.ai_client = get_ai_client()
 
     async def generate_advisement(self,
                                   profile: StudentProfile,
@@ -137,12 +131,12 @@ class AIService:
 
     async def _call_gemini(self, user_prompt: str) -> Optional[dict]:
         try:
-            response = self.ai_client.generate_content(
-                contents=[ADVISEMENT_SYSTEM_PROMPT, user_prompt]
+            client = _get_gemini_client()
+            response = client.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=[ADVISEMENT_SYSTEM_PROMPT, user_prompt],
             )
-            return response
-        except AIError as e:
-            return f"Error generating advisement: {e}"
+            return json.loads(_clean_json(response.text))
         except Exception as e:
             print(f"Gemini advisement failed: {e}")
             return None
