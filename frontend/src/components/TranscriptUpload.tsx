@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { uploadTranscript } from "../api/client";
+import { uploadTranscript, saveParsedCourses } from "../api/client";
 import type { TranscriptParseResult, TranscriptProfileHints, ParsedCourse } from "../types";
 
 interface Props {
@@ -99,6 +99,13 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
       seen.add(key);
       return true;
     });
+
+    // Persist courses to the session so the backend knows the student's history
+    try {
+      await saveParsedCourses(sessionId, dedupedCourses);
+    } catch {
+      // Non-fatal: the form prefill still works, advisor will just have less context
+    }
 
     setStatus("done");
     onParsed({ profile: mergedProfile, courses: dedupedCourses });
