@@ -9,13 +9,14 @@ from typing import Type, TypeVar, Callable, Optional
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from .database import get_db
-from .exceptions import SessionNotFoundError, CourseNotFoundError, ProgramNotFoundError
-from .repositories.base import BaseRepository
-from .repositories.session_repository import SessionRepository
-from .repositories.course_repository import CourseRepository
-from .repositories.program_repository import ProgramRepository
-from .models import StudentSession, Course, Program
+from ..database import get_db
+from ..exceptions import SessionNotFoundError, CourseNotFoundError, ProgramNotFoundError
+from ..repositories.base import BaseRepository
+from ..repositories.session_repository import SessionRepository
+from ..repositories.course_repository import CourseRepository
+from ..repositories.program_repository import ProgramRepository
+from ..models import StudentSession, Course, Program
+from .rate_limit import rate_limit, RateLimiter, get_rate_limiter
 
 # Generic type for repositories
 T = TypeVar("T")
@@ -97,12 +98,13 @@ def get_current_program(
 
 
 # Service imports and factories
-from .services.session_service import SessionService
-from .services.course_service import CourseService
-from .services.program_service import ProgramService
-from .services.parser_service import ParserService
-from .services.prerequisite_service import PrerequisiteService
-from .services.ai_service import AIService
+from ..services.session_service import SessionService
+from ..services.course_service import CourseService
+from ..services.program_service import ProgramService
+from ..services.parser_service import ParserService
+from ..services.prerequisite_service import PrerequisiteService
+from ..services.ai_service import AIService
+from ..services.cleanup_service import CleanupService
 
 
 def get_service(service_class: Type[T], *repo_deps: Callable) -> Callable[..., T]:
@@ -158,3 +160,29 @@ def get_prerequisite_service(
 def get_ai_service() -> AIService:
     """Get AIService instance (no dependencies)."""
     return AIService()
+
+
+def get_cleanup_service(db: Session = Depends(get_db)) -> CleanupService:
+    """Get CleanupService instance."""
+    return CleanupService(db)
+
+
+__all__ = [
+    "rate_limit",
+    "RateLimiter",
+    "get_rate_limiter",
+    "get_repository",
+    "get_session_repository",
+    "get_course_repository",
+    "get_program_repository",
+    "get_current_session",
+    "get_current_course",
+    "get_current_program",
+    "get_session_service",
+    "get_course_service",
+    "get_program_service",
+    "get_parser_service",
+    "get_prerequisite_service",
+    "get_ai_service",
+    "get_cleanup_service",
+]
