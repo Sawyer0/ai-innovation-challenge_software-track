@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "concurrently --names \"API,UI\" --prefix-colors \"cyan,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && sh -c '[ -f venv/bin/uvicorn ] && venv/bin/uvicorn app.main:app --reload --port 8000 || uvicorn app.main:app --reload --port 8000'",
+    "dev:frontend": "cd frontend && npm run dev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -20,5 +23,8 @@
   "homepage": "https://github.com/Sawyer0/ai-innovation-challenge_software-track#readme",
   "dependencies": {
     "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

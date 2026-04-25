@@ -12,7 +12,7 @@ async def upload_transcript(
     parser_service: ParserService = Depends(get_parser_service)
 ):
     try:
-        courses = await parser_service.parse_and_save(file, session.session_id)
-        return {"message": f"Successfully parsed {len(courses)} courses", "courses": courses}
+        result = await parser_service.parse_and_save(file, session.session_id)
+        return result  # {profile: {...}, courses: [...]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
