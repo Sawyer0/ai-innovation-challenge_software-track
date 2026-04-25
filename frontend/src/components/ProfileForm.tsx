@@ -20,11 +20,15 @@ interface Props {
 }
 
 const STEPS = ["Academic", "Compliance", "Career Goal"];
+const CURRENT_YEAR = new Date().getFullYear();
+const MIN_GRAD_YEAR = CURRENT_YEAR;
+const MAX_GRAD_YEAR = CURRENT_YEAR + 10;
 
 export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses }: Props) {
   const [step, setStep] = useState(0);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [showAllCourses, setShowAllCourses] = useState(false);
+  const [gradYearError, setGradYearError] = useState("");
   const [profile, setProfile] = useState<StudentProfile>({
     school: prefill?.school ?? "BMCC",
     program_code: prefill?.program_code ?? undefined,
@@ -53,6 +57,30 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
   function set<K extends keyof StudentProfile>(key: K, value: StudentProfile[K]) {
     setProfile((p) => ({ ...p, [key]: value }));
   }
+
+  function handleGradYear(raw: string) {
+    if (raw === "") {
+      set("graduation_year", undefined);
+      setGradYearError("");
+      return;
+    }
+    const yr = parseInt(raw, 10);
+    if (isNaN(yr)) return;
+    if (yr < MIN_GRAD_YEAR) {
+      setGradYearError(`Graduation year cannot be in the past (min ${MIN_GRAD_YEAR}).`);
+    } else if (yr > MAX_GRAD_YEAR) {
+      setGradYearError(`Graduation year seems too far out (max ${MAX_GRAD_YEAR}).`);
+    } else {
+      setGradYearError("");
+    }
+    set("graduation_year", yr);
+  }
+
+  const step0Valid =
+    !!profile.program_code &&
+    !!profile.graduation_semester &&
+    !!profile.graduation_year &&
+    !gradYearError;
 
   function next() { setStep((s) => s + 1); }
   function back() { setStep((s) => s - 1); }
@@ -185,27 +213,37 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
 
             <div className="row">
               <label>
-                Target Graduation Semester
+                Target Graduation Semester <span className="field-required">*</span>
                 <select
                   value={profile.graduation_semester ?? ""}
                   onChange={(e) => set("graduation_semester", e.target.value)}
+                  className={!profile.graduation_semester ? "input-empty" : ""}
                 >
-                  <option value="">— Semester —</option>
+                  <option value="">— Select semester —</option>
                   <option>Spring</option>
                   <option>Summer</option>
                   <option>Fall</option>
                 </select>
+                {!profile.graduation_semester && (
+                  <span className="field-hint field-hint--required">Required</span>
+                )}
               </label>
               <label>
-                Graduation Year
+                Graduation Year <span className="field-required">*</span>
                 <input
                   type="number"
-                  min={2025}
-                  max={2035}
+                  min={MIN_GRAD_YEAR}
+                  max={MAX_GRAD_YEAR}
                   value={profile.graduation_year ?? ""}
-                  onChange={(e) => set("graduation_year", Number(e.target.value))}
-                  placeholder="2027"
+                  onChange={(e) => handleGradYear(e.target.value)}
+                  placeholder={String(CURRENT_YEAR + 2)}
+                  className={gradYearError ? "input-error" : ""}
                 />
+                {gradYearError
+                  ? <span className="field-hint field-hint--error">{gradYearError}</span>
+                  : !profile.graduation_year
+                    ? <span className="field-hint field-hint--required">Required</span>
+                    : null}
               </label>
             </div>
 
@@ -214,11 +252,13 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
                 type="button"
                 className="btn-primary"
                 onClick={next}
-                disabled={!profile.program_code}
+                disabled={!step0Valid}
               >
-                {profile.program_code
-                  ? `Next → ${selectedProgram ? `(${selectedProgram.name})` : ""}`
-                  : "Select a program to continue"}
+                {!profile.program_code
+                  ? "Select a program to continue"
+                  : !profile.graduation_semester || !profile.graduation_year
+                    ? "Set graduation target to continue"
+                    : `Next → ${selectedProgram ? `(${selectedProgram.name})` : ""}`}
               </button>
             </div>
           </div>
