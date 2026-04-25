@@ -5,6 +5,7 @@ from .. import schemas, models
 from ..dependencies import get_current_session, get_prerequisite_service, get_ai_service, get_db
 from ..services.prerequisite_service import PrerequisiteService
 from ..services.ai_service import AIService
+from ..utils import check_financial_aid_compliance, check_visa_compliance, calculate_pell_proration, check_tap_elective_compliance
 
 router = APIRouter(prefix="/api/advisement", tags=["advisement"])
 
@@ -32,7 +33,7 @@ def get_eligible_courses(
         error_msg = traceback.format_exc()
         raise HTTPException(status_code=500, detail=error_msg)
 
-@router.post("/")
+@router.post("/", response_model=schemas.AdvisementResponse)
 async def advisement(
     chat_msg: schemas.ChatMessage,
     session: models.StudentSession = Depends(get_current_session),
@@ -70,10 +71,49 @@ async def advisement(
                 "title": course_db.title if course_db else req
             })
 
-    # Build warnings based on student profile
+    # --- Compliance Guardrail (deterministic, runs before AI) ---
+    is_compliant, compliance_warning = check_financial_aid_compliance(
+        financial_aid_type=profile.financial_aid_type,
+        planned_credits=current_planned_credits,
+        enrollment_status=profile.enrollment_status,
+        db=db,
+    )
+    if not is_compliant:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "compliance_violation",
+                "aid_type": profile.financial_aid_type,
+                "planned_credits": current_planned_credits,
+                "message": compliance_warning,
+            },
+        )
+
+    # --- Visa Guardrail (deterministic, runs before AI) ---
+    visa_ok, visa_warning = check_visa_compliance(
+        student_type=profile.student_type,
+        planned_credits=current_planned_credits,
+        planned_course_codes=planned_course_codes,
+        db=db,
+    )
+    if not visa_ok:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "visa_compliance_violation",
+                "student_type": profile.student_type,
+                "planned_credits": current_planned_credits,
+                "message": visa_warning,
+            },
+        )
+
+    # Pass compliance status as context to the AI (no warnings needed — guardrails already passed)
     warnings = []
     if profile.financial_aid_type:
-        warnings.append(f"Financial aid ({profile.financial_aid_type}) requires maintaining enrollment requirements")
+        warnings.append(
+            f"Student is compliant with {profile.financial_aid_type} requirements "
+            f"({current_planned_credits} planned credits)."
+        )
 
     response = await ai_service.generate_advisement(
         profile=profile,
@@ -84,7 +124,22 @@ async def advisement(
         warnings=warnings,
         current_planned_credits=current_planned_credits,
         db=db,
-        student_message=chat_msg.message
+        student_message=chat_msg.message,
     )
 
-    return schemas.ChatResponse(response=response)
+    # --- TAP elective check (post-AI annotation, not a hard block) ---
+    check_tap_elective_compliance(
+        financial_aid_type=profile.financial_aid_type,
+        program_code=profile.program_code,
+        recommended_courses=response.recommended_courses,
+        db=db,
+    )
+
+    proration_data = calculate_pell_proration(
+        financial_aid_type=profile.financial_aid_type,
+        planned_credits=current_planned_credits,
+    )
+    if proration_data:
+        response.pell_proration = schemas.PellProration(**proration_data)
+
+    return response
