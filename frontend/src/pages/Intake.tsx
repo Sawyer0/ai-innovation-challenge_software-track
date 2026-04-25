@@ -1,4 +1,3 @@
-import { useState } from "react";
 import ProfileForm from "../components/ProfileForm";
 import TranscriptUpload from "../components/TranscriptUpload";
 import type { StudentProfile, TranscriptParseResult, TranscriptProfileHints, ParsedCourse } from "../types";
@@ -7,17 +6,12 @@ interface Props {
   sessionId: string;
   onSubmit: (profile: StudentProfile) => void;
   loading: boolean;
+  prefill?: TranscriptProfileHints;
+  parsedCourses?: ParsedCourse[];
+  onParsed: (result: TranscriptParseResult) => void;
 }
 
-export default function Intake({ sessionId, onSubmit, loading }: Props) {
-  const [prefill, setPrefill] = useState<TranscriptProfileHints | undefined>();
-  const [parsedCourses, setParsedCourses] = useState<ParsedCourse[]>([]);
-
-  function handleParsed(result: TranscriptParseResult) {
-    setPrefill(result.profile);
-    setParsedCourses(result.courses);
-  }
-
+export default function Intake({ sessionId, onSubmit, loading, prefill, parsedCourses, onParsed }: Props) {
   return (
     <div className="intake-layout">
       <div className="intake-header">
@@ -28,7 +22,7 @@ export default function Intake({ sessionId, onSubmit, loading }: Props) {
         </p>
       </div>
 
-      <TranscriptUpload sessionId={sessionId} onParsed={handleParsed} />
+      <TranscriptUpload sessionId={sessionId} onParsed={onParsed} />
 
       <ProfileForm
         onSubmit={onSubmit}
