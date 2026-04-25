@@ -71,6 +71,8 @@ class ScrapedAcademicPolicy(BaseModel):
     description: str
     rule_logic: Optional[dict] = None
     applies_to_student_types: Optional[List[str]] = None
+    applies_to_classifications: Optional[List[str]] = None
+    applies_to_academic_standings: Optional[List[str]] = None
     applies_to_programs: Optional[List[str]] = None
     priority: int = 100
     is_active: bool = True
@@ -293,6 +295,8 @@ def load_rules(json_path: str):
                 description=p.description,
                 rule_logic=p.rule_logic,
                 applies_to_student_types=p.applies_to_student_types,
+                applies_to_classifications=p.applies_to_classifications,
+                applies_to_academic_standings=p.applies_to_academic_standings,
                 applies_to_programs=p.applies_to_programs,
                 priority=p.priority,
                 is_active=p.is_active

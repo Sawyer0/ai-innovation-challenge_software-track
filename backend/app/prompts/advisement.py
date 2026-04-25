@@ -31,6 +31,8 @@ If the student is international, remind them they must maintain full-time (12+ c
 ADVISEMENT_USER_PROMPT_TEMPLATE = """Student Profile:
 - Enrollment Status: {enrollment_status}
 - Student Type: {student_type}
+- Classification: {classification}
+- Academic Standing: {academic_standing}
 - Financial Aid: {financial_aid_type}
 - Program: {program_code}
 - Target Graduation: {graduation_semester} {graduation_year}

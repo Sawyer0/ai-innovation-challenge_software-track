@@ -43,6 +43,8 @@ class StudentProfileBase(BaseModel):
     program_code: Optional[str] = Field(None, max_length=50)
     enrollment_status: Optional[str] = Field(None, max_length=50)
     student_type: Optional[str] = Field(None, max_length=50)
+    classification: Optional[str] = Field(None, max_length=50)
+    academic_standing: Optional[str] = Field(None, max_length=50)
     financial_aid_type: Optional[str] = Field(None, max_length=50)
     graduation_year: Optional[int] = Field(None, ge=1900, le=2100)
     graduation_semester: Optional[str] = Field(None, max_length=20)
