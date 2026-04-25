@@ -29,6 +29,7 @@ class CoursePrerequisite(Base):
     is_corequisite = Column(Boolean, default=False)
     logic_group = Column(Integer, default=1)
     notes = Column(Text)
+    minimum_grade = Column(String(2), default="C")  # "C" or better required by default
     
     # New indexing columns for non-course attributes
     is_attribute = Column(Boolean, default=False)
@@ -81,6 +82,7 @@ class StudentSession(Base):
     session_id = Column(String(64), unique=True, index=True, nullable=False)
     created_at = Column(DateTime, default=func.now())
     last_activity = Column(DateTime, default=func.now(), onupdate=func.now())
+    expires_at = Column(DateTime, nullable=True)  # 30-day session expiry
 
     profile = relationship("StudentProfile", back_populates="session", uselist=False)
     courses = relationship("StudentCourse", back_populates="session")
@@ -94,8 +96,10 @@ class StudentProfile(Base):
     session_id = Column(String(64), ForeignKey("student_sessions.session_id"))
     school = Column(String(100))
     program_code = Column(String(50))
-    enrollment_status = Column(String(50))
-    student_type = Column(String(50))
+    enrollment_status = Column(String(50))  # Full-time, Part-time
+    student_type = Column(String(50))       # Continuing, Transfer, International
+    classification = Column(String(50))     # Freshman, Sophomore, Junior, Senior
+    academic_standing = Column(String(50))  # Good Standing, Probation, Dismissed
     financial_aid_type = Column(String(50))
     graduation_year = Column(Integer)
     graduation_semester = Column(String(20))
@@ -149,7 +153,9 @@ class AcademicPolicy(Base):
     policy_code = Column(String(50))
     description = Column(Text, nullable=False)
     rule_logic = Column(JSON)
-    applies_to_student_types = Column(JSON)
+    applies_to_student_types = Column(JSON)      # entry types: Continuing, Transfer, etc.
+    applies_to_classifications = Column(JSON)    # freshman, sophomore, etc.
+    applies_to_academic_standings = Column(JSON) # Good Standing, Probation, etc.
     applies_to_programs = Column(JSON)
     priority = Column(Integer, default=100)
     is_active = Column(Boolean, default=True)
