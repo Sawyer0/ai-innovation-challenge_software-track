@@ -3,9 +3,17 @@ from typing import List
 from ..models import Program
 from .base import BaseRepository
 
-class ProgramRepository(BaseRepository):
+
+class ProgramRepository(BaseRepository[Program]):
+    """Repository for Program entity operations."""
+
+    def __init__(self, db: Session):
+        super().__init__(db, Program)
+
     def get_by_code(self, code: str) -> Program:
-        return self.db.query(Program).filter(Program.program_code == code).first()
+        """Get program by its program code."""
+        return self.get_by_field("program_code", code)
 
     def list_paginated(self, skip: int = 0, limit: int = 100) -> List[Program]:
-        return self.db.query(Program).offset(skip).limit(limit).all()
+        """List all programs with pagination."""
+        return self.list_all(skip, limit)

@@ -1,5 +1,3 @@
-from google import genai
-from ..config import settings
 from ..models import StudentProfile
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -8,11 +6,14 @@ from ..prompts import (
     ADVISEMENT_USER_PROMPT_TEMPLATE,
 )
 from ..utils import get_next_semester, calculate_remaining_credits
+from ..infrastructure.ai import get_ai_client, AIError
+
 
 class AIService:
+    """Service for AI-powered advisement generation."""
+
     def __init__(self):
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.model = settings.GEMINI_MODEL
+        self.ai_client = get_ai_client()
 
     async def generate_advisement(self,
                                   profile: StudentProfile,
@@ -52,13 +53,11 @@ class AIService:
         )
 
         try:
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=[
-                    ADVISEMENT_SYSTEM_PROMPT,
-                    user_prompt
-                ]
+            response = self.ai_client.generate_content(
+                contents=[ADVISEMENT_SYSTEM_PROMPT, user_prompt]
             )
-            return response.text
+            return response
+        except AIError as e:
+            return f"Error generating advisement: {e}"
         except Exception as e:
             return f"Error generating advisement: {e}"
