@@ -15,26 +15,34 @@ from io import BytesIO
 @pytest.mark.slow
 class TestCompleteStudentWorkflow:
     """Test full user journey: create → upload → get advisement."""
-    
-    @patch('app.parsers.transcript_parser.client')
-    @patch('app.services.ai_service.genai.Client')
-    def test_new_student_gets_personalized_advisement(self, mock_ai_client, mock_parser_client, client):
+
+    @patch('app.infrastructure.ai.client.genai.Client')
+    def test_new_student_gets_personalized_advisement(self, mock_client_class, client):
         """
         E2E: New student creates session, uploads transcript,
         sets profile, receives AI advisement.
         """
-        # Setup Gemini mock for transcript parsing
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
+
+        # Setup Gemini mock
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        # First call is for transcript parsing
         parser_response = Mock()
         parser_response.text = '''[
             {"course_code": "MAT 157", "semester_taken": "Spring 2023", "status": "completed", "grade": "A", "credits": 4},
             {"course_code": "ENG 101", "semester_taken": "Spring 2023", "status": "completed", "grade": "B+", "credits": 3}
         ]'''
-        mock_parser_client.models.generate_content.return_value = parser_response
-        
-        # Setup Gemini mock for advisement
+
+        # Second call is for advisement
         ai_response = Mock()
         ai_response.text = "Since you've completed MAT 157 and ENG 101, you can take MAT 206 and ENG 201 this Fall. That would give you 7 credits. Does that sound like a plan?"
-        mock_ai_client.return_value.models.generate_content.return_value = ai_response
+
+        # Configure mock to return different responses for different calls
+        mock_client.models.generate_content.side_effect = [parser_response, ai_response]
         
         # 1. Create session
         resp = client.post("/api/session")
@@ -83,15 +91,21 @@ class TestCompleteStudentWorkflow:
         assert session_data["profile"]["program_code"] == "CSC-AS"
         assert len(session_data["courses"]) == 2
     
-    @patch('app.services.ai_service.genai.Client')
-    def test_student_can_manually_add_courses(self, mock_ai_client, client):
+    @patch('app.infrastructure.ai.client.genai.Client')
+    def test_student_can_manually_add_courses(self, mock_client_class, client):
         """
         E2E: Student manually adds courses instead of uploading transcript.
         """
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
+
         # Mock AI response
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
         ai_response = Mock()
         ai_response.text = "Based on your completed courses, you can take MAT 206 next."
-        mock_ai_client.return_value.models.generate_content.return_value = ai_response
+        mock_client.models.generate_content.return_value = ai_response
         
         # 1. Create session
         session_id = client.post("/api/session").json()["session_id"]
@@ -121,21 +135,28 @@ class TestCompleteStudentWorkflow:
         assert resp.status_code == 200
         assert "response" in resp.json()
     
-    @patch('app.parsers.transcript_parser.client')
-    @patch('app.services.ai_service.genai.Client')
-    def test_financial_aid_warning_included(self, mock_ai_client, mock_parser_client, client):
+    @patch('app.infrastructure.ai.client.genai.Client')
+    def test_financial_aid_warning_included(self, mock_client_class, client):
         """
         E2E: Student with Pell Grant gets warning about credit minimums.
         """
-        # Mock transcript parsing
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
+
+        # Setup mock
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        # First call for transcript parsing
         parser_response = Mock()
         parser_response.text = '''[{"course_code": "MAT 157", "semester_taken": "Fall 2023", "status": "completed", "grade": "A", "credits": 4}]'''
-        mock_parser_client.models.generate_content.return_value = parser_response
-        
-        # Mock AI to verify warning is in prompt
+
+        # Second call for advisement
         ai_response = Mock()
         ai_response.text = "Since you're on Pell Grant, make sure to take at least 6 credits. You can take MAT 206 (4 credits) and add a 3-credit elective."
-        mock_ai_client.return_value.models.generate_content.return_value = ai_response
+
+        mock_client.models.generate_content.side_effect = [parser_response, ai_response]
         
         # 1. Create session with Pell Grant
         session_id = client.post("/api/session").json()["session_id"]
@@ -162,7 +183,7 @@ class TestCompleteStudentWorkflow:
         assert resp.status_code == 200
         
         # Verify the call was made (warning should be in prompt)
-        call_args = mock_ai_client.return_value.models.generate_content.call_args
+        call_args = mock_client.models.generate_content.call_args
         contents = call_args[1]['contents']
         # Warning should be in the prompt
         assert any("pell" in str(c).lower() or "warning" in str(c).lower() for c in contents)

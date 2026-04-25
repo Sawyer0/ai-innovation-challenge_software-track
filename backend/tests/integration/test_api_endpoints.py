@@ -187,8 +187,8 @@ class TestProgramEndpoints:
 class TestAdvisementEndpoints:
     """Test AI advisement flow with mocked Gemini."""
     
-    @patch('app.services.ai_service.genai.Client')
-    def test_get_eligible_courses(self, mock_gemini, client, db):
+    @patch('app.infrastructure.ai.client.genai.Client')
+    def test_get_eligible_courses(self, mock_client_class, client, db):
         """GET /api/advisement/eligible returns courses student can take."""
         from app import models
         
@@ -245,10 +245,13 @@ class TestAdvisementEndpoints:
         # MAT 206 should be eligible (prereq satisfied)
         assert "MAT 206" in data["eligible_courses"]
     
-    @patch('app.services.ai_service.genai.Client')
+    @patch('app.infrastructure.ai.client.genai.Client')
     def test_advisement_endpoint(self, mock_client_class, client, db):
         """POST /api/advisement returns AI-generated response."""
-        # Mock Gemini response
+        # Reset singleton and mock Gemini response
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
+
         mock_client = Mock()
         mock_response = Mock()
         mock_response.text = "Since you've completed MAT 157, you can take MAT 206 this Fall."
@@ -294,15 +297,20 @@ class TestAdvisementEndpoints:
 class TestTranscriptEndpoints:
     """Test transcript upload flow."""
     
-    @patch('app.parsers.transcript_parser.client')
-    def test_upload_image_parsed_and_saved(self, mock_gemini_client, client, db):
+    @patch('app.infrastructure.ai.client.genai.Client')
+    def test_upload_image_parsed_and_saved(self, mock_client_class, client, db):
         """Upload image -> Gemini parses -> courses saved to DB."""
         from io import BytesIO
         
-        # Mock Gemini response
+        # Reset singleton and mock Gemini response
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
         mock_response = Mock()
         mock_response.text = '''[{"course_code": "MAT 206", "semester_taken": "Fall 2023", "status": "completed", "grade": "B+", "credits": 4}]'''
-        mock_gemini_client.models.generate_content.return_value = mock_response
+        mock_client.models.generate_content.return_value = mock_response
         
         # Create session
         session_id = client.post("/api/session").json()["session_id"]

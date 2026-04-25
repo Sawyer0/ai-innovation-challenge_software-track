@@ -14,7 +14,7 @@ class TestGenerateAdvisement:
     """Test AI advisement generation with mocked LLM."""
     
     @pytest.mark.asyncio
-    @patch('app.services.ai_service.genai.Client')
+    @patch('app.infrastructure.ai.client.genai.Client')
     async def test_prompt_includes_all_student_data(self, mock_client_class, mock_profile):
         """Verify prompt template is populated correctly with all student data."""
         # Arrange
@@ -23,6 +23,10 @@ class TestGenerateAdvisement:
         mock_response.text = "Test advisement response"
         mock_client.models.generate_content.return_value = mock_response
         mock_client_class.return_value = mock_client
+        
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
         
         service = AIService()
         mock_db = MagicMock()
@@ -62,7 +66,7 @@ class TestGenerateAdvisement:
         assert "What next?" in user_prompt
     
     @pytest.mark.asyncio
-    @patch('app.services.ai_service.genai.Client')
+    @patch('app.infrastructure.ai.client.genai.Client')
     async def test_prompt_handles_empty_courses(self, mock_client_class, mock_profile):
         """Should handle empty course lists gracefully."""
         mock_client = Mock()
@@ -70,6 +74,10 @@ class TestGenerateAdvisement:
         mock_response.text = "No courses completed yet"
         mock_client.models.generate_content.return_value = mock_response
         mock_client_class.return_value = mock_client
+        
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
         
         service = AIService()
         mock_db = MagicMock()
@@ -91,13 +99,17 @@ class TestGenerateAdvisement:
         assert result == "No courses completed yet"
     
     @pytest.mark.asyncio
-    @patch('app.services.ai_service.genai.Client')
+    @patch('app.infrastructure.ai.client.genai.Client')
     async def test_handles_gemini_api_error(self, mock_client_class, mock_profile):
         """Should gracefully handle API errors."""
         # Arrange
         mock_client = Mock()
         mock_client.models.generate_content.side_effect = Exception("API Error")
         mock_client_class.return_value = mock_client
+        
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
         
         service = AIService()
         mock_db = MagicMock()
@@ -122,7 +134,7 @@ class TestGenerateAdvisement:
         assert "API Error" in result
     
     @pytest.mark.asyncio
-    @patch('app.services.ai_service.genai.Client')
+    @patch('app.infrastructure.ai.client.genai.Client')
     async def test_default_message_when_none_provided(self, mock_client_class, mock_profile):
         """Should use default message when student_message is None."""
         mock_client = Mock()
@@ -130,6 +142,10 @@ class TestGenerateAdvisement:
         mock_response.text = "Default response"
         mock_client.models.generate_content.return_value = mock_response
         mock_client_class.return_value = mock_client
+        
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
         
         service = AIService()
         mock_db = MagicMock()
@@ -154,7 +170,7 @@ class TestGenerateAdvisement:
         assert "What should I take next?" in contents[1]
     
     @pytest.mark.asyncio
-    @patch('app.services.ai_service.genai.Client')
+    @patch('app.infrastructure.ai.client.genai.Client')
     async def test_multiple_available_courses_formatted(self, mock_client_class, mock_profile):
         """Should format multiple available courses correctly."""
         mock_client = Mock()
@@ -162,6 +178,10 @@ class TestGenerateAdvisement:
         mock_response.text = "Multiple courses response"
         mock_client.models.generate_content.return_value = mock_response
         mock_client_class.return_value = mock_client
+        
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
         
         service = AIService()
         mock_db = MagicMock()
@@ -199,20 +219,24 @@ class TestGenerateAdvisement:
 class TestAIServiceInitialization:
     """Test service setup and configuration."""
     
-    @patch('app.services.ai_service.genai.Client')
-    @patch('app.services.ai_service.settings')
+    @patch('app.infrastructure.ai.client.genai.Client')
+    @patch('app.infrastructure.ai.client.settings')
     def test_uses_configured_api_key(self, mock_settings, mock_client_class):
         """Should initialize Gemini with configured API key."""
         mock_settings.GEMINI_API_KEY = "test-api-key"
         mock_settings.GEMINI_MODEL = "gemini-2.5-flash"
+        
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
         
         service = AIService()
         
         mock_client_class.assert_called_once_with(api_key="test-api-key")
     
     @pytest.mark.asyncio
-    @patch('app.services.ai_service.genai.Client')
-    @patch('app.services.ai_service.settings')
+    @patch('app.infrastructure.ai.client.genai.Client')
+    @patch('app.infrastructure.ai.client.settings')
     async def test_uses_configured_model(self, mock_settings, mock_client_class):
         """Should use configured model for requests."""
         mock_settings.GEMINI_API_KEY = "test-key"
@@ -223,6 +247,10 @@ class TestAIServiceInitialization:
         mock_response.text = "Response"
         mock_client.models.generate_content.return_value = mock_response
         mock_client_class.return_value = mock_client
+        
+        # Reset singleton to force re-initialization
+        from app.infrastructure.ai.client import AIClient
+        AIClient._instance = None
         
         service = AIService()
         mock_db = MagicMock()
