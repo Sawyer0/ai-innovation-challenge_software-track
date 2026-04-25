@@ -10,11 +10,26 @@ from . import models
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
-# Seed enrollment rules and financial aid constraints on startup
-from .services.catalog_loader import seed_policy_data as _seed_policy_data
+# Auto-load catalog on startup if empty, then seed policy data
+import os as _os
+from .services.catalog_loader import load_catalog as _load_catalog, load_rules as _load_rules, seed_policy_data as _seed_policy_data
+from sqlalchemy import text as _text
+
 _db = SessionLocal()
 try:
-    _seed_policy_data(_db)
+    _course_count = _db.execute(_text("SELECT COUNT(*) FROM courses")).scalar()
+    if _course_count == 0:
+        _catalog_path = _os.path.join(_os.path.dirname(__file__), "../../data/bmcc-catalog.json")
+        _rules_path   = _os.path.join(_os.path.dirname(__file__), "../../data/rules.json")
+        if _os.path.exists(_catalog_path):
+            print("Catalog empty — loading from bmcc-catalog.json...")
+            _load_catalog(_catalog_path)
+            if _os.path.exists(_rules_path):
+                _load_rules(_rules_path)
+        else:
+            _seed_policy_data(_db)
+    else:
+        _seed_policy_data(_db)
 finally:
     _db.close()
 

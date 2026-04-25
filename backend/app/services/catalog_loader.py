@@ -172,9 +172,12 @@ def load_catalog(json_path: str):
         print(f"Validation Error: {ve}")
         return
 
-    # Ensure tables exist
-    print("Recreating database tables...")
-    Base.metadata.drop_all(bind=engine)
+    # Only drop and recreate catalog tables — preserve session/profile/course data
+    print("Recreating catalog tables...")
+    _CATALOG_TABLES = ["course_prerequisites", "program_requirements", "programs", "courses"]
+    for tname in _CATALOG_TABLES:
+        if tname in Base.metadata.tables:
+            Base.metadata.tables[tname].drop(bind=engine, checkfirst=True)
     Base.metadata.create_all(bind=engine)
 
     db: Session = SessionLocal()
