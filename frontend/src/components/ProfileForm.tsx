@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { StudentProfile, Program, EnrollmentStatus, FinancialAidType, StudentType } from "../types";
 import { getPrograms } from "../api/client";
+import { BMCC_PROGRAMS } from "../data/bmccPrograms";
 
 interface Props {
   onSubmit: (profile: StudentProfile) => void;
@@ -20,7 +21,9 @@ export default function ProfileForm({ onSubmit, loading }: Props) {
   });
 
   useEffect(() => {
-    getPrograms().then(setPrograms).catch(() => {});
+    getPrograms()
+      .then((data) => setPrograms(data.length > 0 ? data : BMCC_PROGRAMS))
+      .catch(() => setPrograms(BMCC_PROGRAMS));
   }, []);
 
   function set<K extends keyof StudentProfile>(key: K, value: StudentProfile[K]) {
