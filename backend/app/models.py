@@ -29,6 +29,11 @@ class CoursePrerequisite(Base):
     is_corequisite = Column(Boolean, default=False)
     logic_group = Column(Integer, default=1)
     notes = Column(Text)
+    
+    # New indexing columns for non-course attributes
+    is_attribute = Column(Boolean, default=False)
+    attribute_name = Column(String(50))
+    attribute_value = Column(String(50))
 
     course = relationship("Course", back_populates="prerequisites")
 
@@ -60,6 +65,11 @@ class ProgramRequirement(Base):
     is_required = Column(Boolean, default=True)
     elective_group = Column(String(50))
     min_credits = Column(Numeric(4, 2))
+    
+    # New indexing columns for wildcard patterns (e.g., "ART *")
+    is_wildcard = Column(Boolean, default=False)
+    wildcard_subject = Column(String(20))
+    wildcard_level = Column(String(10))
 
     program = relationship("Program", back_populates="requirements")
 
