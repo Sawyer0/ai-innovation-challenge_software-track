@@ -2,7 +2,7 @@
 System prompts for transcript parsing.
 
 Extracts course information from uploaded transcripts (image, PDF, CSV).
-Uses Google Gemini Vision capabilities for image/PDF parsing.
+Primary parser: Claude (Anthropic). Fallback: Google Gemini Vision.
 """
 
 TRANSCRIPT_PARSING_SYSTEM_PROMPT = """You are a transcript data extraction assistant for BMCC.

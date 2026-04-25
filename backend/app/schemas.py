@@ -46,6 +46,7 @@ class StudentProfileBase(BaseModel):
     financial_aid_type: Optional[str] = Field(None, max_length=50)
     graduation_year: Optional[int] = Field(None, ge=1900, le=2100)
     graduation_semester: Optional[str] = Field(None, max_length=20)
+    career_goal: Optional[str] = None
 
 class StudentCourseBase(BaseModel):
     course_code: str = Field(..., max_length=20)
@@ -69,6 +70,32 @@ class SessionResponse(BaseModel):
 
 class ChatMessage(BaseModel):
     message: str
+
+class RecommendedCourse(BaseModel):
+    course_code: str
+    course_title: str
+    credits: float
+    requirement_satisfied: str      # which degree requirement this fulfills
+    compliance_status: str          # "compliant", "warning", or "blocked"
+    compliance_note: Optional[str]  # populated only when not compliant
+    career_rationale: str           # how this course connects to the student's career goal
+    why_now: str                    # why this course makes sense this semester specifically
+
+class PellProration(BaseModel):
+    planned_credits: float
+    percentage: float               # 0.25 / 0.50 / 0.75 / 1.00
+    percentage_display: str         # "75%"
+    enrollment_tier: str            # "half-time", "three-quarter-time", etc.
+    note: str                       # plain-English explanation for the student
+
+class AdvisementResponse(BaseModel):
+    next_semester: str
+    total_planned_credits: float
+    compliance_cleared: bool
+    advisor_message: str            # conversational opening/closing paragraph
+    recommended_courses: List[RecommendedCourse]
+    pell_proration: Optional[PellProration] = None   # None when student has no Pell
+    disclaimer: str = "Always confirm your final schedule with your advisor and DegreeWorks before registering."
 
 class ChatResponse(BaseModel):
     response: str

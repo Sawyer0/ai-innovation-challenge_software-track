@@ -15,6 +15,7 @@ class Course(Base):
     department = Column(String(100))
     hegis_code = Column(String(20))
     typically_offered = Column(String(100))
+    instruction_mode = Column(String(50))  # "In Person", "Online", "Hybrid"
     raw_data = Column(JSON)
 
     prerequisites = relationship("CoursePrerequisite", back_populates="course")
@@ -89,6 +90,7 @@ class StudentProfile(Base):
     financial_aid_type = Column(String(50))
     graduation_year = Column(Integer)
     graduation_semester = Column(String(20))
+    career_goal = Column(Text)
 
     session = relationship("StudentSession", back_populates="profile")
 
