@@ -106,7 +106,7 @@ export async function getAdvisement(
   message: string
 ): Promise<AdvisementResponse> {
   return request<AdvisementResponse>(
-    `/api/advisement/?session_id=${sessionId}`,
+    `/api/session/${sessionId}/advisement`,
     {
       method: "POST",
       body: JSON.stringify({ message }),
