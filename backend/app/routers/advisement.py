@@ -8,9 +8,9 @@ from ..services.prerequisite_service import PrerequisiteService
 from ..services.ai_service import AIService
 from ..utils import check_financial_aid_compliance, check_visa_compliance, calculate_pell_proration, check_tap_elective_compliance
 
-router = APIRouter(prefix="/api/advisement", tags=["advisement"])
+router = APIRouter(prefix="/api/session", tags=["advisement"])
 
-@router.get("/eligible")
+@router.get("/{session_id}/advisement/eligible")
 def get_eligible_courses(
     session: models.StudentSession = Depends(get_current_session),
     prereq_service: PrerequisiteService = Depends(get_prerequisite_service)
@@ -34,7 +34,7 @@ def get_eligible_courses(
         error_msg = traceback.format_exc()
         raise HTTPException(status_code=500, detail=error_msg)
 
-@router.post("/", response_model=schemas.AdvisementResponse)
+@router.post("/{session_id}/advisement", response_model=schemas.AdvisementResponse)
 async def advisement(
     chat_msg: schemas.ChatMessage,
     request: Request,
