@@ -34,6 +34,20 @@ export interface ParsedCourse {
   status: "completed" | "in-progress";
 }
 
+export interface TranscriptProfileHints {
+  school?: string | null;
+  program_code?: string | null;
+  program_name?: string | null;
+  student_type?: "domestic" | "international" | null;
+  cumulative_gpa?: number | null;
+  total_credits_earned?: number | null;
+}
+
+export interface TranscriptParseResult {
+  profile: TranscriptProfileHints;
+  courses: ParsedCourse[];
+}
+
 // ── Advisement ────────────────────────────────────────────────────────────────
 
 export type ComplianceStatus = "compliant" | "warning" | "blocked";
