@@ -84,9 +84,9 @@ export interface ComplianceViolation {
 // ── Programs ──────────────────────────────────────────────────────────────────
 
 export interface Program {
-  id: number;
+  id?: number;
   program_code: string;
   name: string;
-  degree: string | null;
-  department: string | null;
+  degree?: string | null;
+  department?: string | null;
 }

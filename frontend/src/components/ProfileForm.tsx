@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { StudentProfile, Program, EnrollmentStatus, FinancialAidType, StudentType } from "../types";
 import { getPrograms } from "../api/client";
 import { BMCC_PROGRAMS } from "../data/bmccPrograms";
+import ProgramSearch from "./ProgramSearch";
 
 interface Props {
   onSubmit: (profile: StudentProfile) => void;
@@ -69,17 +70,11 @@ export default function ProfileForm({ onSubmit, loading }: Props) {
 
             <label>
               Program / Major
-              <select
+              <ProgramSearch
+                programs={programs}
                 value={profile.program_code ?? ""}
-                onChange={(e) => set("program_code", e.target.value)}
-              >
-                <option value="">— Select your program —</option>
-                {programs.map((p) => (
-                  <option key={p.program_code} value={p.program_code}>
-                    {p.name} ({p.degree ?? p.program_code})
-                  </option>
-                ))}
-              </select>
+                onChange={(code) => set("program_code", code)}
+              />
             </label>
 
             <div className="row">
