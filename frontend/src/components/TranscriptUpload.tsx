@@ -71,7 +71,7 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
     for (let i = 0; i < selectedFiles.length; i++) {
       try {
         const result = await uploadTranscript(sessionId, selectedFiles[i]);
-        allCourses.push(...result.courses);
+        allCourses.push(...(Array.isArray(result.courses) ? result.courses : []));
         // First file's profile hints win; subsequent files fill in gaps
         mergedProfile = {
           school: mergedProfile.school ?? result.profile.school,

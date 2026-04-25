@@ -15,12 +15,15 @@ class ParserService:
         that the frontend can use to prefill the profile form.
         """
         result = await parse_transcript(file)
-        courses = result.get("courses", [])
-        profile_hints = result.get("profile", {}) or {}
+        courses = result.get("courses") or []
+        profile_hints = result.get("profile") or {}
 
-        for course in courses:
+        # Drop any entries the AI returned without a course code — they would
+        # violate the NOT NULL constraint and cause a 500 on save.
+        valid_courses = [c for c in courses if isinstance(c, dict) and c.get("course_code")]
+        for course in valid_courses:
             course["source"] = "transcript"
 
-        self.session_service.add_courses_bulk(session_id, courses)
+        self.session_service.add_courses_bulk(session_id, valid_courses)
 
-        return {"profile": profile_hints, "courses": courses}
+        return {"profile": profile_hints, "courses": valid_courses}
