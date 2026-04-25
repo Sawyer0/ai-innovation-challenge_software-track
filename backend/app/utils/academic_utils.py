@@ -157,10 +157,12 @@ def check_financial_aid_compliance(
         return True, None
     
     min_credits = float(constraint.min_credits_required) if constraint.min_credits_required else 0
-    
-    if planned_credits < min_credits:
+
+    # Only block when the student has already planned courses that fall short.
+    # planned_credits == 0 means the AI hasn't recommended anything yet — let it proceed.
+    if planned_credits > 0 and planned_credits < min_credits:
         return False, constraint.warning_message or f"Need {min_credits} credits for {financial_aid_type}"
-    
+
     return True, None
 
 
@@ -336,7 +338,9 @@ def check_visa_compliance(
 
     violations = []
 
-    if planned_credits < _F1_MIN_CREDITS:
+    # Only flag credit shortfall when the student has actually planned courses.
+    # planned_credits == 0 means the AI hasn't recommended a schedule yet.
+    if planned_credits > 0 and planned_credits < _F1_MIN_CREDITS:
         violations.append(
             f"F-1 visa requires full-time enrollment of at least {_F1_MIN_CREDITS} credits. "
             f"Your current plan has {planned_credits} credits. "
