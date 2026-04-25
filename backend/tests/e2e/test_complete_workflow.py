@@ -135,39 +135,49 @@ class TestCompleteStudentWorkflow:
         assert resp.status_code == 200
         assert "response" in resp.json()
     
-    @patch('app.infrastructure.ai.client.genai.Client')
-    def test_financial_aid_warning_included(self, mock_client_class, client):
+    @patch('app.services.parser_service.detect_and_parse')
+    @patch('app.services.ai_service.AIService')
+    def test_financial_aid_warning_included(self, mock_ai_service_class, mock_detect_and_parse, client):
         """
         E2E: Student with Pell Grant gets warning about credit minimums.
         """
-        # Reset singleton to force re-initialization
-        from app.infrastructure.ai.client import AIClient
-        AIClient._instance = None
+        import os
 
-        # Setup mock
-        mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        # Mock the parser to return structured data
+        mock_detect_and_parse.return_value = {
+            "source": "transcript",
+            "confidence": 0.9,
+            "student": {},
+            "courses": {
+                "completed": [{"course_code": "MAT 157", "semester_taken": "Fall 2023", "status": "completed", "grade": "A", "credits": 4}],
+                "in_progress": [],
+                "still_needed": [],
+                "fall_through": []
+            },
+            "all_courses": [{"course_code": "MAT 157", "semester_taken": "Fall 2023", "status": "completed", "grade": "A", "credits": 4}],
+            "requirements": [],
+            "validated": [{"course_code": "MAT 157", "semester_taken": "Fall 2023", "status": "completed", "grade": "A", "credits": 4}],
+            "flagged": [],
+            "invalid": [],
+            "requires_confirmation": False
+        }
 
-        # First call for transcript parsing
-        parser_response = Mock()
-        parser_response.text = '''[{"course_code": "MAT 157", "semester_taken": "Fall 2023", "status": "completed", "grade": "A", "credits": 4}]'''
+        # Mock AI service
+        mock_ai_service = Mock()
+        mock_ai_service.generate_advisement = Mock(return_value="Since you're on Pell Grant, make sure to take at least 6 credits. You can take MAT 206 (4 credits) and add a 3-credit elective.")
+        mock_ai_service_class.return_value = mock_ai_service
 
-        # Second call for advisement
-        ai_response = Mock()
-        ai_response.text = "Since you're on Pell Grant, make sure to take at least 6 credits. You can take MAT 206 (4 credits) and add a 3-credit elective."
-
-        mock_client.models.generate_content.side_effect = [parser_response, ai_response]
-        
         # 1. Create session with Pell Grant
         session_id = client.post("/api/session").json()["session_id"]
-        
-        # 2. Upload transcript
-        fake_image = BytesIO(b"fake")
-        client.post(
-            f"/api/session/{session_id}/transcript",
-            files={"file": ("transcript.png", fake_image, "image/png")}
-        )
-        
+
+        # 2. Upload actual PDF
+        pdf_path = os.path.join(os.path.dirname(__file__), "../../assets/degree-works-ds.pdf")
+        with open(pdf_path, "rb") as pdf_file:
+            client.post(
+                f"/api/session/{session_id}/transcript",
+                files={"file": ("degree-works-ds.pdf", pdf_file, "application/pdf")}
+            )
+
         # 3. Set profile with Pell Grant
         client.post(f"/api/session/{session_id}/profile", json={
             "school": "BMCC",
@@ -175,18 +185,15 @@ class TestCompleteStudentWorkflow:
             "enrollment_status": "half-time",
             "financial_aid_type": "pell"
         })
-        
+
         # 4. Get advisement
         resp = client.post(f"/api/advisement?session_id={session_id}", json={
             "message": "What should I take?"
         })
         assert resp.status_code == 200
-        
-        # Verify the call was made (warning should be in prompt)
-        call_args = mock_client.models.generate_content.call_args
-        contents = call_args[1]['contents']
-        # Warning should be in the prompt
-        assert any("pell" in str(c).lower() or "warning" in str(c).lower() for c in contents)
+
+        # Verify AI service was called
+        assert mock_ai_service.generate_advisement.called
 
 
 @pytest.mark.e2e

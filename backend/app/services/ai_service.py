@@ -38,6 +38,8 @@ class AIService:
         user_prompt = ADVISEMENT_USER_PROMPT_TEMPLATE.format(
             enrollment_status=profile.enrollment_status,
             student_type=profile.student_type,
+            classification=profile.classification,
+            academic_standing=profile.academic_standing,
             financial_aid_type=profile.financial_aid_type or "None",
             program_code=profile.program_code,
             graduation_semester=profile.graduation_semester,

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Dict, Any
 from .. import schemas, models
-from ..dependencies import get_current_session, get_session_service
+from ..dependencies import get_current_session, get_session_service, get_cleanup_service
 from ..services.session_service import SessionService
+from ..services.cleanup_service import CleanupService
 from ..exceptions import SessionNotFoundError
 
 router = APIRouter(prefix="/api/session", tags=["session"])
@@ -46,3 +47,30 @@ def delete_course(
     if not success:
         raise HTTPException(status_code=404, detail="Course not found")
     return {"message": "Course deleted"}
+
+
+@router.get("/{session_id}/status")
+def get_session_status(
+    session_id: str,
+    cleanup_service: CleanupService = Depends(get_cleanup_service)
+):
+    """
+    Check session validity and expiry status.
+    
+    Returns 410 Gone if session has expired.
+    """
+    status_info = cleanup_service.get_session_status(session_id)
+    
+    if not status_info:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    if status_info["is_expired"]:
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "message": "Session has expired",
+                "expired_at": status_info["expires_at"]
+            }
+        )
+    
+    return status_info

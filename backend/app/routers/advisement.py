@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List
 from .. import schemas, models
 from ..dependencies import get_current_session, get_prerequisite_service, get_ai_service, get_db
+from ..dependencies.rate_limit import rate_limit
 from ..services.prerequisite_service import PrerequisiteService
 from ..services.ai_service import AIService
 
@@ -35,10 +36,12 @@ def get_eligible_courses(
 @router.post("/")
 async def advisement(
     chat_msg: schemas.ChatMessage,
+    request: Request,
     session: models.StudentSession = Depends(get_current_session),
     prereq_service: PrerequisiteService = Depends(get_prerequisite_service),
     ai_service: AIService = Depends(get_ai_service),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(rate_limit)
 ):
     profile = session.profile
     if not profile:

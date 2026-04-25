@@ -73,7 +73,7 @@
         "requires_gpa": 3.0,
         "requires_approval": true
       },
-      "applies_to_student_types": ["freshman", "sophomore"],
+      "applies_to_classifications": ["freshman", "sophomore", "junior", "senior"],
       "priority": 10,
       "is_active": true
     },
@@ -84,7 +84,7 @@
       "rule_logic": {
         "max_credits": 12.0
       },
-      "applies_to_student_types": ["probation"],
+      "applies_to_academic_standings": ["probation"],
       "priority": 5,
       "is_active": true
     },
