@@ -24,6 +24,7 @@ const STEPS = ["Academic", "Compliance", "Career Goal"];
 export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses }: Props) {
   const [step, setStep] = useState(0);
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [showAllCourses, setShowAllCourses] = useState(false);
   const [profile, setProfile] = useState<StudentProfile>({
     school: prefill?.school ?? "BMCC",
     program_code: prefill?.program_code ?? undefined,
@@ -140,15 +141,23 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
                   )}
                 </div>
                 <div className="parsed-list parsed-list--compact">
-                  {parsedCourses.slice(0, 6).map((c) => (
+                  {(showAllCourses ? parsedCourses : parsedCourses.slice(0, 6)).map((c) => (
                     <div key={`${c.course_code}-${c.semester_taken}`} className="parsed-item">
                       <span className="parsed-code">{c.course_code}</span>
                       <span className="parsed-name">{c.course_title}</span>
-                      <span className="parsed-grade">{c.grade ?? (c.status === "in-progress" ? "In Progress" : "—")}</span>
+                      <span className="parsed-grade">{c.grade ?? (c.status === "in-progress" ? "IP" : "—")}</span>
                     </div>
                   ))}
                   {parsedCourses.length > 6 && (
-                    <p className="parsed-more">+ {parsedCourses.length - 6} more courses</p>
+                    <button
+                      type="button"
+                      className="parsed-toggle"
+                      onClick={() => setShowAllCourses((v) => !v)}
+                    >
+                      {showAllCourses
+                        ? "Show less ▲"
+                        : `+ ${parsedCourses.length - 6} more courses ▼`}
+                    </button>
                   )}
                 </div>
               </div>
