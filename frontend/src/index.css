@@ -562,7 +562,20 @@ textarea { resize: vertical; }
 .parsed-code { font-weight: 700; color: var(--cuny-blue); min-width: 72px; flex-shrink: 0; }
 .parsed-name { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .parsed-grade { font-weight: 600; color: var(--text-muted); flex-shrink: 0; }
-.parsed-more { font-size: .78rem; color: var(--text-muted); text-align: center; padding: .3rem 0 0; margin: 0; }
+.parsed-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  font-size: .78rem;
+  color: var(--cuny-blue);
+  font-weight: 600;
+  padding: .45rem 0 .1rem;
+  margin-top: .2rem;
+  text-align: center;
+}
+.parsed-toggle:hover { color: var(--cuny-blue-dark); }
 
 /* ── Intake layout ───────────────────────────────────────────────────────────── */
 .intake-layout { display: flex; flex-direction: column; gap: 1.5rem; }
