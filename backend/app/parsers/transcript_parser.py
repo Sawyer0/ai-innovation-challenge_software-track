@@ -43,14 +43,22 @@ def _clean_json(text: str) -> str:
 def _normalize_result(raw: dict | list) -> dict:
     """
     Normalize the AI response into {profile, courses}.
-    Handles both the new structured format and the legacy bare-array format.
+    Handles the new structured format, bare-array responses, and partial/null fields.
     """
     if isinstance(raw, list):
-        # Legacy: AI returned just a courses array
         return {"profile": {}, "courses": raw}
 
-    courses = raw.get("courses", [])
-    profile = raw.get("profile", {}) or {}
+    if not isinstance(raw, dict):
+        return {"profile": {}, "courses": []}
+
+    courses = raw.get("courses") or []
+    if not isinstance(courses, list):
+        courses = []
+
+    profile = raw.get("profile") or {}
+    if not isinstance(profile, dict):
+        profile = {}
+
     return {"profile": profile, "courses": courses}
 
 
