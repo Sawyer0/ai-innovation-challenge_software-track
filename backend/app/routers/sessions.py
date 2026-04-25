@@ -1,10 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import Dict, Any
+from typing import Dict, Any, List
+from pydantic import BaseModel
 from .. import schemas, models
 from ..dependencies import get_current_session, get_session_service, get_cleanup_service
 from ..services.session_service import SessionService
 from ..services.cleanup_service import CleanupService
 from ..exceptions import SessionNotFoundError
+
+
+class BulkCourseItem(BaseModel):
+    course_code: str
+    course_title: str | None = None
+    semester_taken: str | None = None
+    status: str
+    grade: str | None = None
+    credits: float = 0
+    source: str = "transcript"
 
 router = APIRouter(prefix="/api/session", tags=["session"])
 
@@ -36,6 +47,28 @@ def add_course(
     service: SessionService = Depends(get_session_service)
 ):
     return service.add_course(session.session_id, course_data.model_dump())
+
+@router.post("/{session_id}/courses/bulk")
+def add_courses_bulk(
+    courses: List[BulkCourseItem],
+    session: models.StudentSession = Depends(get_current_session),
+    service: SessionService = Depends(get_session_service),
+):
+    """Save a list of parsed transcript courses to the session, skipping duplicates."""
+    saved = 0
+    for c in courses:
+        # Skip if already recorded (same code + semester)
+        existing = service.repo.db.query(models.StudentCourse).filter(
+            models.StudentCourse.session_id == session.session_id,
+            models.StudentCourse.course_code == c.course_code,
+            models.StudentCourse.semester_taken == c.semester_taken,
+        ).first()
+        if existing:
+            continue
+        service.add_course(session.session_id, c.model_dump())
+        saved += 1
+    return {"saved": saved, "total": len(courses)}
+
 
 @router.delete("/{session_id}/courses/{course_code}")
 def delete_course(
