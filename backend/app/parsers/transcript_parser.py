@@ -2,6 +2,7 @@ import base64
 import json
 import anthropic
 from google import genai
+from google.genai import types as genai_types
 from ..config import settings
 from fastapi import UploadFile
 from ..prompts import (
@@ -101,7 +102,7 @@ async def _parse_with_gemini(file_content: bytes, mime_type: str) -> dict:
         model=settings.GEMINI_MODEL,
         contents=[
             TRANSCRIPT_PARSING_SYSTEM_PROMPT,
-            {"mime_type": mime_type, "data": file_content},
+            genai_types.Part.from_bytes(data=file_content, mime_type=mime_type),
             TRANSCRIPT_PARSING_USER_PROMPT,
         ],
     )
