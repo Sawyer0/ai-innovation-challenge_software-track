@@ -31,16 +31,18 @@ export interface ParsedCourse {
   semester_taken: string | null;
   credits: number;
   grade: string | null;
-  status: "completed" | "in-progress";
+  status: "completed" | "in-progress" | "withdrawn";
 }
 
 export interface TranscriptProfileHints {
   school?: string | null;
   program_code?: string | null;
   program_name?: string | null;
+  degree?: string | null;
   student_type?: "domestic" | "international" | null;
   cumulative_gpa?: number | null;
   total_credits_earned?: number | null;
+  total_credits_needed?: number | null;
 }
 
 export interface TranscriptParseResult {

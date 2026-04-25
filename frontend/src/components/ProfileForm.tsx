@@ -117,7 +117,7 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
               />
               {prefill?.program_name && !profile.program_code && (
                 <span className="field-hint">
-                  Transcript shows: <em>{prefill.program_name}</em> — select the matching program above
+                  Transcript shows: <em>{prefill.program_name}{prefill.degree ? ` (${prefill.degree})` : ""}</em> — select the matching program above
                 </span>
               )}
             </label>
@@ -127,11 +127,13 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
               <div className="parsed-courses-inline">
                 <div className="parsed-courses-inline__header">
                   <span className="parsed-courses-inline__count">
-                    {parsedCourses.length} courses from transcript
+                    {parsedCourses.filter(c => c.status === "completed").length} completed
+                    · {parsedCourses.filter(c => c.status === "in-progress").length} in progress
                   </span>
                   {prefill?.total_credits_earned != null && (
                     <span className="parsed-courses-inline__credits">
-                      {prefill.total_credits_earned} credits earned
+                      {prefill.total_credits_earned} cr earned
+                      {prefill.total_credits_needed != null && ` / ${prefill.total_credits_needed} needed`}
                     </span>
                   )}
                   {prefill?.cumulative_gpa != null && (
@@ -140,12 +142,30 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
                     </span>
                   )}
                 </div>
+                {/* column headers */}
+                <div className="parsed-item parsed-item--header">
+                  <span className="parsed-code">Code</span>
+                  <span className="parsed-name">Title</span>
+                  <span className="parsed-cr">Cr</span>
+                  <span className="parsed-grade">Grade</span>
+                </div>
                 <div className="parsed-list parsed-list--compact">
                   {(showAllCourses ? parsedCourses : parsedCourses.slice(0, 6)).map((c) => (
-                    <div key={`${c.course_code}-${c.semester_taken}`} className="parsed-item">
+                    <div
+                      key={`${c.course_code}-${c.semester_taken}`}
+                      className={`parsed-item ${c.status === "withdrawn" ? "parsed-item--withdrawn" : ""}`}
+                    >
                       <span className="parsed-code">{c.course_code}</span>
-                      <span className="parsed-name">{c.course_title}</span>
-                      <span className="parsed-grade">{c.grade ?? (c.status === "in-progress" ? "IP" : "—")}</span>
+                      <span className="parsed-name">
+                        {c.course_title}
+                        {c.semester_taken && <span className="parsed-term">{c.semester_taken}</span>}
+                      </span>
+                      <span className="parsed-cr">{c.credits > 0 ? c.credits : "—"}</span>
+                      <span className={`parsed-grade parsed-grade--${c.status}`}>
+                        {c.status === "withdrawn" ? "W"
+                          : c.status === "in-progress" ? "IP"
+                          : c.grade ?? "—"}
+                      </span>
                     </div>
                   ))}
                   {parsedCourses.length > 6 && (
