@@ -4,7 +4,7 @@ import type {
   AdvisementResponse,
   ComplianceViolation,
   Program,
-  ParsedCourse,
+  TranscriptParseResult,
 } from "../types";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -62,7 +62,7 @@ export async function setProfile(
 export async function uploadTranscript(
   sessionId: string,
   file: File
-): Promise<ParsedCourse[]> {
+): Promise<TranscriptParseResult> {
   const form = new FormData();
   form.append("file", file);
 
@@ -76,7 +76,7 @@ export async function uploadTranscript(
     throw new Error(body?.detail ?? "Transcript upload failed");
   }
 
-  return res.json() as Promise<ParsedCourse[]>;
+  return res.json() as Promise<TranscriptParseResult>;
 }
 
 // ── Advisement ────────────────────────────────────────────────────────────────

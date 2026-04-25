@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { uploadTranscript } from "../api/client";
-import type { ParsedCourse } from "../types";
+import type { TranscriptParseResult } from "../types";
 
 interface Props {
   sessionId: string;
-  onParsed: (courses: ParsedCourse[]) => void;
+  onParsed: (result: TranscriptParseResult) => void;
 }
 
 export default function TranscriptUpload({ sessionId, onParsed }: Props) {
@@ -26,10 +26,10 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
     setErrorMsg("");
 
     try {
-      const courses = await uploadTranscript(sessionId, file);
-      setParsedCount(courses.length);
+      const result = await uploadTranscript(sessionId, file);
+      setParsedCount(result.courses.length);
       setStatus("done");
-      onParsed(courses);
+      onParsed(result);
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "Upload failed. Try again.");
       setStatus("error");
@@ -50,10 +50,14 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
 
   return (
     <div className="transcript-section">
-      <h3>Upload Transcript <span className="badge badge-optional">Optional</span></h3>
+      <h3>
+        Upload Transcript{" "}
+        <span className="badge badge-optional">Optional</span>
+      </h3>
       <p className="subtitle">
-        Upload a screenshot or PDF from CUNYfirst — we'll extract your completed
-        courses automatically using AI. You can also add courses manually below.
+        Upload a screenshot or PDF from CUNYfirst — we'll extract your courses
+        and pre-fill your profile automatically. You'll review everything before
+        submitting.
       </p>
 
       <div
@@ -61,7 +65,7 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => { if (status !== "uploading") inputRef.current?.click(); }}
       >
         <input
           ref={inputRef}
@@ -83,13 +87,14 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
           <>
             <div className="spinner" />
             <p>Parsing transcript with AI…</p>
+            <p className="drop-sub">This may take a few seconds</p>
           </>
         )}
 
         {status === "done" && (
           <>
             <div className="drop-icon">✅</div>
-            <p><strong>{parsedCount} courses</strong> extracted from your transcript</p>
+            <p><strong>{parsedCount} courses</strong> extracted — review your profile below</p>
             <p className="drop-sub">Click to upload a different file</p>
           </>
         )}

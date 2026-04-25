@@ -39,10 +39,23 @@ def _clean_json(text: str) -> str:
     return text.strip()
 
 
-async def _parse_with_claude(file_content: bytes, mime_type: str) -> list:
+def _normalize_result(raw: dict | list) -> dict:
+    """
+    Normalize the AI response into {profile, courses}.
+    Handles both the new structured format and the legacy bare-array format.
+    """
+    if isinstance(raw, list):
+        # Legacy: AI returned just a courses array
+        return {"profile": {}, "courses": raw}
+
+    courses = raw.get("courses", [])
+    profile = raw.get("profile", {}) or {}
+    return {"profile": profile, "courses": courses}
+
+
+async def _parse_with_claude(file_content: bytes, mime_type: str) -> dict:
     client = _get_claude_client()
 
-    # PDFs use the document block type; images use the image block type
     if mime_type == "application/pdf":
         content_block = {
             "type": "document",
@@ -64,7 +77,7 @@ async def _parse_with_claude(file_content: bytes, mime_type: str) -> list:
 
     message = client.messages.create(
         model=settings.CLAUDE_MODEL,
-        max_tokens=2048,
+        max_tokens=4096,
         system=TRANSCRIPT_PARSING_SYSTEM_PROMPT,
         messages=[
             {
@@ -77,10 +90,11 @@ async def _parse_with_claude(file_content: bytes, mime_type: str) -> list:
         ],
     )
 
-    return json.loads(_clean_json(message.content[0].text))
+    raw = json.loads(_clean_json(message.content[0].text))
+    return _normalize_result(raw)
 
 
-async def _parse_with_gemini(file_content: bytes, mime_type: str) -> list:
+async def _parse_with_gemini(file_content: bytes, mime_type: str) -> dict:
     client = _get_gemini_client()
 
     response = client.models.generate_content(
@@ -92,12 +106,13 @@ async def _parse_with_gemini(file_content: bytes, mime_type: str) -> list:
         ],
     )
 
-    return json.loads(_clean_json(response.text))
+    raw = json.loads(_clean_json(response.text))
+    return _normalize_result(raw)
 
 
-async def parse_transcript(file: UploadFile) -> list:
+async def parse_transcript(file: UploadFile) -> dict:
     """
-    Parse a student transcript (image or PDF) into a structured course list.
+    Parse a student transcript into {profile: {...}, courses: [...]}.
     Tries Claude first, falls back to Gemini, raises if both fail.
     """
     file_content = await file.read()
@@ -105,16 +120,16 @@ async def parse_transcript(file: UploadFile) -> list:
     mime_type = file.content_type
 
     try:
-        courses = await _parse_with_claude(file_content, mime_type)
+        result = await _parse_with_claude(file_content, mime_type)
         print("Transcript parsed via Claude")
-        return courses
+        return result
     except Exception as claude_err:
         print(f"Claude parsing failed: {claude_err} — trying Gemini")
 
     try:
-        courses = await _parse_with_gemini(file_content, mime_type)
+        result = await _parse_with_gemini(file_content, mime_type)
         print("Transcript parsed via Gemini (fallback)")
-        return courses
+        return result
     except Exception as gemini_err:
         print(f"Gemini parsing failed: {gemini_err}")
 

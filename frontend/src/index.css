@@ -417,22 +417,79 @@ textarea { resize: vertical; }
 .drop-sub { font-size: .8rem; color: var(--text-muted) !important; }
 .error-text { color: var(--color-danger) !important; }
 
-/* ── Parsed courses preview ──────────────────────────────────────────────────── */
-.parsed-courses-preview { margin-bottom: 1.5rem; }
-.parsed-courses-preview h4 { margin-bottom: .75rem; font-size: .95rem; }
-.parsed-list { display: flex; flex-direction: column; gap: .35rem; }
+/* ── Prefill notice ──────────────────────────────────────────────────────────── */
+.prefill-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius);
+  padding: .85rem 1rem;
+  margin-bottom: 1.5rem;
+  font-size: .875rem;
+}
+.prefill-notice__icon { font-size: 1rem; color: var(--color-success); flex-shrink: 0; margin-top: .1rem; }
+.prefill-notice strong { color: #15803d; display: block; margin-bottom: .15rem; }
+.prefill-notice p { color: #166534; margin: 0; font-size: .825rem; }
+
+.badge-prefilled {
+  background: #dcfce7;
+  color: #15803d;
+  font-size: .7rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+  margin-left: .35rem;
+}
+
+.field-hint {
+  font-size: .8rem;
+  color: var(--color-warning);
+  font-weight: 400;
+  margin-top: -.25rem;
+}
+
+/* ── Inline parsed courses (inside form) ─────────────────────────────────────── */
+.parsed-courses-inline {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .75rem;
+  margin-bottom: 1.25rem;
+}
+.parsed-courses-inline__header {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: .6rem;
+  font-size: .8rem;
+  font-weight: 600;
+}
+.parsed-courses-inline__count { color: var(--cuny-blue); }
+.parsed-courses-inline__credits,
+.parsed-courses-inline__gpa {
+  background: var(--cuny-blue-light);
+  color: var(--cuny-blue);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.parsed-list { display: flex; flex-direction: column; gap: .3rem; }
+.parsed-list--compact .parsed-item { padding: .3rem .5rem; }
 .parsed-item {
   display: flex;
   align-items: center;
   gap: .75rem;
   padding: .4rem .6rem;
-  background: var(--bg);
+  background: var(--bg-card);
   border-radius: 6px;
-  font-size: .875rem;
+  font-size: .825rem;
 }
-.parsed-code { font-weight: 700; color: var(--cuny-blue); min-width: 80px; }
-.parsed-name { flex: 1; color: var(--text); }
-.parsed-grade { font-weight: 600; color: var(--text-muted); }
+.parsed-code { font-weight: 700; color: var(--cuny-blue); min-width: 72px; flex-shrink: 0; }
+.parsed-name { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.parsed-grade { font-weight: 600; color: var(--text-muted); flex-shrink: 0; }
+.parsed-more { font-size: .78rem; color: var(--text-muted); text-align: center; padding: .3rem 0 0; margin: 0; }
 
 /* ── Intake layout ───────────────────────────────────────────────────────────── */
 .intake-layout { display: flex; flex-direction: column; gap: 1.5rem; }

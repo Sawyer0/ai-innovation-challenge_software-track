@@ -1,7 +1,7 @@
 import { useState } from "react";
 import ProfileForm from "../components/ProfileForm";
 import TranscriptUpload from "../components/TranscriptUpload";
-import type { StudentProfile, ParsedCourse } from "../types";
+import type { StudentProfile, TranscriptParseResult, TranscriptProfileHints, ParsedCourse } from "../types";
 
 interface Props {
   sessionId: string;
@@ -10,10 +10,12 @@ interface Props {
 }
 
 export default function Intake({ sessionId, onSubmit, loading }: Props) {
+  const [prefill, setPrefill] = useState<TranscriptProfileHints | undefined>();
   const [parsedCourses, setParsedCourses] = useState<ParsedCourse[]>([]);
 
-  function handleParsed(courses: ParsedCourse[]) {
-    setParsedCourses(courses);
+  function handleParsed(result: TranscriptParseResult) {
+    setPrefill(result.profile);
+    setParsedCourses(result.courses);
   }
 
   return (
@@ -28,22 +30,12 @@ export default function Intake({ sessionId, onSubmit, loading }: Props) {
 
       <TranscriptUpload sessionId={sessionId} onParsed={handleParsed} />
 
-      {parsedCourses.length > 0 && (
-        <div className="parsed-courses-preview card">
-          <h4>Courses extracted from transcript ({parsedCourses.length})</h4>
-          <div className="parsed-list">
-            {parsedCourses.map((c) => (
-              <div key={c.course_code} className="parsed-item">
-                <span className="parsed-code">{c.course_code}</span>
-                <span className="parsed-name">{c.course_title}</span>
-                <span className="parsed-grade">{c.grade ?? "—"}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <ProfileForm onSubmit={onSubmit} loading={loading} />
+      <ProfileForm
+        onSubmit={onSubmit}
+        loading={loading}
+        prefill={prefill}
+        parsedCourses={parsedCourses}
+      />
     </div>
   );
 }
