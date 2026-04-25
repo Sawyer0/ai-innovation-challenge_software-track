@@ -1,0 +1,103 @@
+{
+  "enrollment_status_rules": [
+    {
+      "status_name": "Full-time",
+      "min_credits": 12.0,
+      "max_credits": 18.0,
+      "description": "Standard full-time enrollment for Fall/Spring semesters.",
+      "is_default": true
+    },
+    {
+      "status_name": "Three-Quarter Time",
+      "min_credits": 9.0,
+      "max_credits": 11.9,
+      "description": "9 to 11.9 credits.",
+      "is_default": false
+    },
+    {
+      "status_name": "Half-time",
+      "min_credits": 6.0,
+      "max_credits": 8.9,
+      "description": "6 to 8.9 credits. Minimum for most federal loans.",
+      "is_default": false
+    },
+    {
+      "status_name": "Less than Half-time",
+      "min_credits": 1.0,
+      "max_credits": 5.9,
+      "description": "1 to 5.9 credits.",
+      "is_default": false
+    }
+  ],
+  "financial_aid_constraints": [
+    {
+      "aid_type": "Pell Grant",
+      "min_credits_required": 12.0,
+      "min_status_required": "Full-time",
+      "warning_message": "Dropping below 12 credits will reduce your Pell Grant to a prorated amount. Dropping below 6 credits may cancel it entirely for the semester.",
+      "block_underload": false,
+      "allow_exception_process": true
+    },
+    {
+      "aid_type": "TAP (NY State)",
+      "min_credits_required": 12.0,
+      "min_status_required": "Full-time",
+      "warning_message": "TAP requires full-time enrollment (12+ credits) in courses that count specifically towards your degree requirements (CPOS).",
+      "block_underload": true,
+      "allow_exception_process": false
+    },
+    {
+      "aid_type": "Excelsior Scholarship",
+      "min_credits_required": 15.0,
+      "min_status_required": "Full-time",
+      "warning_message": "Excelsior requires you to earn 30 credits per academic year. We recommend 15 credits per semester to stay on track.",
+      "block_underload": false,
+      "allow_exception_process": true
+    },
+    {
+      "aid_type": "Federal Student Loans",
+      "min_credits_required": 6.0,
+      "min_status_required": "Half-time",
+      "warning_message": "You must be enrolled at least half-time (6 credits) to receive federal student loans.",
+      "block_underload": true,
+      "allow_exception_process": false
+    }
+  ],
+  "academic_policies": [
+    {
+      "policy_type": "Credit Overload",
+      "policy_code": "MAX_SESS_18",
+      "description": "Maximum of 18 credits per semester allowed. Overload requires 3.0 GPA and Advisor approval.",
+      "rule_logic": {
+        "max_credits": 18.0,
+        "requires_gpa": 3.0,
+        "requires_approval": true
+      },
+      "applies_to_student_types": ["freshman", "sophomore"],
+      "priority": 10,
+      "is_active": true
+    },
+    {
+      "policy_type": "Probation Limit",
+      "policy_code": "PROB_LIM_12",
+      "description": "Students on Academic Probation are limited to 12 credits per semester.",
+      "rule_logic": {
+        "max_credits": 12.0
+      },
+      "applies_to_student_types": ["probation"],
+      "priority": 5,
+      "is_active": true
+    },
+    {
+      "policy_type": "Course Repeat",
+      "policy_code": "REPEAT_F",
+      "description": "F grades can be repeated once for credit. The new grade replaces the old one in GPA calculation (CUNY F-replacement policy).",
+      "rule_logic": {
+        "repeatable_grades": ["F", "WU", "FIN"],
+        "max_repeats": 1
+      },
+      "priority": 20,
+      "is_active": true
+    }
+  ]
+}

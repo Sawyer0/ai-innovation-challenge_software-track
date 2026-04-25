@@ -25,5 +25,13 @@ def main():
 
     load_catalog(args.path)
 
+    # Automatically try to load rules.json if it exists in the same data folder
+    rules_path = os.path.join(os.path.dirname(args.path), "rules.json")
+    if os.path.exists(rules_path):
+        from ..services.catalog_loader import load_rules
+        load_rules(rules_path)
+    else:
+        print(f"Note: rules.json not found at {rules_path}. Skipping rules import.")
+
 if __name__ == "__main__":
     main()
