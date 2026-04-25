@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Intake from "./pages/Intake";
 import Results from "./pages/Results";
 import ComplianceAlert from "./components/ComplianceAlert";
@@ -7,23 +7,51 @@ import type { AdvisementResponse, ComplianceViolation, StudentProfile, Transcrip
 
 type AppState = "intake" | "loading" | "results";
 
+// Persists a value in sessionStorage so refreshes don't wipe it.
+// sessionStorage is tab-scoped and clears when the tab is closed.
+function useSessionStorage<T>(key: string, initial: T): [T, (val: T) => void] {
+  const [value, setInner] = useState<T>(() => {
+    try {
+      const raw = sessionStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : initial;
+    } catch {
+      return initial;
+    }
+  });
+
+  const setValue = useCallback((val: T) => {
+    setInner(val);
+    try {
+      if (val === undefined || val === null) {
+        sessionStorage.removeItem(key);
+      } else {
+        sessionStorage.setItem(key, JSON.stringify(val));
+      }
+    } catch { /* quota exceeded — degrade gracefully */ }
+  }, [key]);
+
+  return [value, setValue];
+}
+
 export default function App() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useSessionStorage<string | null>("dja_session_id", null);
+  const [prefill, setPrefill] = useSessionStorage<TranscriptProfileHints | undefined>("dja_prefill", undefined);
+  const [parsedCourses, setParsedCourses] = useSessionStorage<ParsedCourse[]>("dja_courses", []);
+
   const [appState, setAppState] = useState<AppState>("intake");
   const [result, setResult] = useState<AdvisementResponse | null>(null);
   const [violation, setViolation] = useState<ComplianceViolation | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Lifted here so transcript data survives compliance errors
-  const [prefill, setPrefill] = useState<TranscriptProfileHints | undefined>();
-  const [parsedCourses, setParsedCourses] = useState<ParsedCourse[]>([]);
 
   useEffect(() => {
+    // Only create a new session if we don't have a cached one
+    if (sessionId) return;
     createSession()
       .then((s) => setSessionId(s.session_id))
       .catch(() =>
         setError("Could not connect to the server. Make sure the backend is running.")
       );
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleProfileSubmit(profile: StudentProfile) {
     if (!sessionId) return;
@@ -45,7 +73,7 @@ export default function App() {
         setAppState("intake");
       } else {
         const msg = e instanceof Error ? e.message : String(e);
-        // Session expired (server restarted) — recover silently
+        // Session expired (server restarted) — create a fresh one
         if (msg.includes("404") || msg.includes("Session not found") || msg.includes("ERR_FAILED")) {
           try {
             const fresh = await createSession();
