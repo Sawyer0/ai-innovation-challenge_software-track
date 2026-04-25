@@ -522,6 +522,11 @@ textarea { resize: vertical; }
   font-weight: 400;
   margin-top: -.25rem;
 }
+.field-hint--required { color: var(--text-muted); }
+.field-hint--error { color: var(--color-danger); }
+.field-required { color: var(--color-danger); font-weight: 700; margin-left: 2px; }
+.input-error { border-color: var(--color-danger) !important; }
+.input-empty { border-color: var(--border); }
 
 /* ── Inline parsed courses (inside form) ─────────────────────────────────────── */
 .parsed-courses-inline {

@@ -74,10 +74,11 @@ def health_check():
     return status
 
 
-from .routers import courses, programs, sessions, upload, advisement
+from .routers import courses, programs, sessions, upload, transcript, advisement
 
 app.include_router(courses.router)
 app.include_router(programs.router)
 app.include_router(sessions.router)
 app.include_router(upload.router)
+app.include_router(transcript.router)
 app.include_router(advisement.router)
