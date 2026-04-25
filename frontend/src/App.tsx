@@ -42,9 +42,21 @@ export default function App() {
     } catch (e) {
       if (e instanceof ComplianceError) {
         setViolation(e.violation);
-        setAppState("intake"); // stay on intake so the form is still there
+        setAppState("intake");
       } else {
-        setError(e instanceof Error ? e.message : "Something went wrong.");
+        const msg = e instanceof Error ? e.message : String(e);
+        // Session expired (server restarted) — recover silently
+        if (msg.includes("404") || msg.includes("Session not found") || msg.includes("ERR_FAILED")) {
+          try {
+            const fresh = await createSession();
+            setSessionId(fresh.session_id);
+            setError("Your session expired — please submit again.");
+          } catch {
+            setError("Could not connect to the server. Make sure the backend is running.");
+          }
+        } else {
+          setError(msg);
+        }
         setAppState("intake");
       }
     }
