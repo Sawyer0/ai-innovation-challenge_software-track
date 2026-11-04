@@ -1,14 +1,12 @@
 """Course advisement generation: Claude first, Gemini as a fallback."""
 
-import asyncio
 import logging
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from ..academics import calculate_remaining_credits, get_next_semester
-from ..config import settings
-from ..infrastructure.ai import get_claude_client, get_gemini_client, parse_json_response
+from ..infrastructure.ai import claude_complete, gemini_complete, parse_json_response
 from ..models import StudentProfile
 from ..prompts import (
     ADVISEMENT_SYSTEM_PROMPT,
@@ -111,14 +109,8 @@ class AIService:
 
     async def _call_claude(self, user_prompt: str) -> dict[str, Any] | None:
         try:
-            message = await asyncio.to_thread(
-                get_claude_client().messages.create,
-                model=settings.CLAUDE_MODEL,
-                max_tokens=2048,
-                system=ADVISEMENT_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_prompt}],
-            )
-            result: dict[str, Any] = parse_json_response(message.content[0].text)
+            text = await claude_complete(ADVISEMENT_SYSTEM_PROMPT, user_prompt, max_tokens=2048)
+            result: dict[str, Any] = parse_json_response(text)
             return result
         except Exception as e:
             logger.warning("Claude advisement failed, trying Gemini: %s", e)
@@ -126,12 +118,8 @@ class AIService:
 
     async def _call_gemini(self, user_prompt: str) -> dict[str, Any] | None:
         try:
-            response = await asyncio.to_thread(
-                get_gemini_client().models.generate_content,
-                model=settings.GEMINI_MODEL,
-                contents=[ADVISEMENT_SYSTEM_PROMPT, user_prompt],
-            )
-            result: dict[str, Any] = parse_json_response(response.text or "")
+            text = await gemini_complete([ADVISEMENT_SYSTEM_PROMPT, user_prompt])
+            result: dict[str, Any] = parse_json_response(text)
             return result
         except Exception as e:
             logger.warning("Gemini advisement failed: %s", e)

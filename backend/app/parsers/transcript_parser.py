@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import csv
 import io
@@ -8,8 +7,7 @@ from typing import Any
 from fastapi import UploadFile
 from google.genai import types as genai_types
 
-from ..config import settings
-from ..infrastructure.ai import get_claude_client, get_gemini_client, parse_json_response
+from ..infrastructure.ai import claude_complete, gemini_complete, parse_json_response
 from ..prompts import (
     TRANSCRIPT_PARSING_SYSTEM_PROMPT,
     TRANSCRIPT_PARSING_USER_PROMPT,
@@ -25,7 +23,7 @@ class TranscriptParsingError(RuntimeError):
     """Raised when neither AI provider could read the transcript."""
 
 
-def _normalize_result(raw: dict | list) -> dict:
+def _normalize_result(raw: Any) -> dict[str, Any]:
     """
     Normalize the AI response into {profile, courses}.
     Handles the new structured format, bare-array responses, and partial/null fields.
@@ -47,63 +45,35 @@ def _normalize_result(raw: dict | list) -> dict:
     return {"profile": profile, "courses": courses}
 
 
-async def _parse_with_claude(file_content: bytes, mime_type: str) -> dict:
-
-    if mime_type == "application/pdf":
-        content_block = {
-            "type": "document",
-            "source": {
-                "type": "base64",
-                "media_type": "application/pdf",
-                "data": base64.standard_b64encode(file_content).decode("utf-8"),
-            },
-        }
-    else:
-        content_block = {
-            "type": "image",
+async def _parse_with_claude(file_content: bytes, mime_type: str) -> dict[str, Any]:
+    block_type = "document" if mime_type == "application/pdf" else "image"
+    content = [
+        {
+            "type": block_type,
             "source": {
                 "type": "base64",
                 "media_type": mime_type,
                 "data": base64.standard_b64encode(file_content).decode("utf-8"),
             },
-        }
-
-    message = await asyncio.to_thread(
-        get_claude_client().messages.create,
-        model=settings.CLAUDE_MODEL,
-        max_tokens=4096,
-        system=TRANSCRIPT_PARSING_SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    content_block,
-                    {"type": "text", "text": TRANSCRIPT_PARSING_USER_PROMPT},
-                ],
-            }
-        ],
-    )
-
-    raw = parse_json_response(message.content[0].text)
-    return _normalize_result(raw)
+        },
+        {"type": "text", "text": TRANSCRIPT_PARSING_USER_PROMPT},
+    ]
+    text = await claude_complete(TRANSCRIPT_PARSING_SYSTEM_PROMPT, content, max_tokens=4096)
+    return _normalize_result(parse_json_response(text))
 
 
-async def _parse_with_gemini(file_content: bytes, mime_type: str) -> dict:
-    response = await asyncio.to_thread(
-        get_gemini_client().models.generate_content,
-        model=settings.GEMINI_MODEL,
-        contents=[
+async def _parse_with_gemini(file_content: bytes, mime_type: str) -> dict[str, Any]:
+    text = await gemini_complete(
+        [
             TRANSCRIPT_PARSING_SYSTEM_PROMPT,
             genai_types.Part.from_bytes(data=file_content, mime_type=mime_type),
             TRANSCRIPT_PARSING_USER_PROMPT,
-        ],
+        ]
     )
-
-    raw = parse_json_response(response.text or "")
-    return _normalize_result(raw)
+    return _normalize_result(parse_json_response(text))
 
 
-async def parse_transcript(file: UploadFile) -> dict:
+async def parse_transcript(file: UploadFile) -> dict[str, Any]:
     """
     Parse a student transcript into {profile: {...}, courses: [...]}.
     Tries Claude first, falls back to Gemini, raises if both fail.
