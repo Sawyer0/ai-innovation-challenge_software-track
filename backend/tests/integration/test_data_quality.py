@@ -80,12 +80,11 @@ class TestCourseDataQuality:
 
         invalid = []
         for req in requirements:
-            if req.course_code and req.course_code not in course_codes:
-                # Check if it might be an elective pattern
-                if not any(
-                    keyword in req.course_code.lower() for keyword in ["elective", "choice"]
-                ):
-                    invalid.append(req.course_code)
+            is_elective_pattern = req.course_code and any(
+                keyword in req.course_code.lower() for keyword in ["elective", "choice"]
+            )
+            if req.course_code and req.course_code not in course_codes and not is_elective_pattern:
+                invalid.append(req.course_code)
 
         # Just warn about invalid references, don't fail
         if invalid:
@@ -132,7 +131,7 @@ class TestCatalogCompleteness:
         total = db.query(func.count(models.Course.id)).scalar()
         with_description = (
             db.query(func.count(models.Course.id))
-            .filter(models.Course.description != None, models.Course.description != "")
+            .filter(models.Course.description.isnot(None), models.Course.description != "")
             .scalar()
         )
 

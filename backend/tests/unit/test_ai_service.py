@@ -1,211 +1,143 @@
 """
-Unit tests for AI service with mocked Gemini client.
-
-Tests prompt generation and response handling without real API calls.
+Unit tests for AIService: prompt building, Claude-to-Gemini fallback and
+response parsing. Providers are the fakes from conftest; nothing leaves the box.
 """
 
-from unittest.mock import MagicMock, Mock, patch
+import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.ai_service import AIService
+from app.infrastructure.ai import strip_code_fences
+from app.schemas import AdvisementResponse
+from app.services.ai_service import AdvisementGenerationError, AIService
+
+PLAN = {
+    "advisor_message": "Since you finished MAT 157, Precalculus is the natural next step.",
+    "recommended_courses": [
+        {
+            "course_code": "MAT 206",
+            "course_title": "Precalculus",
+            "credits": 4,
+            "requirement_satisfied": "Required: Year 1 Spring",
+            "compliance_status": "compliant",
+            "compliance_note": None,
+            "career_rationale": "Calculus-track math underpins robotics.",
+            "why_now": "Its prerequisite, MAT 157, is complete.",
+        }
+    ],
+}
+
+
+async def _advise(service: AIService, profile, **overrides) -> AdvisementResponse:
+    kwargs = {
+        "profile": profile,
+        "completed_courses": ["MAT 157", "ENG 101"],
+        "in_progress_courses": ["CSC 101"],
+        "planned_courses": [],
+        "available_courses": [{"code": "MAT 206", "title": "Precalculus"}],
+        "warnings": ["Pell Grant: recommend at least 6 credits."],
+        "current_planned_credits": 0.0,
+        "db": MagicMock(),
+        "student_message": "What should I take next?",
+    }
+    kwargs.update(overrides)
+    with (
+        patch("app.services.ai_service.get_next_semester", return_value="Fall 2026"),
+        patch("app.services.ai_service.calculate_remaining_credits", return_value=18.0),
+    ):
+        return await service.generate_advisement(**kwargs)
 
 
 @pytest.mark.unit
 class TestGenerateAdvisement:
-    """Test AI advisement generation with mocked LLM."""
+    async def test_returns_structured_plan_from_claude(self, mock_profile, ai_providers):
+        ai_providers.claude.queue(PLAN)
 
-    @pytest.mark.asyncio
-    async def test_prompt_includes_all_student_data(self, mock_profile):
-        """Verify prompt template is populated correctly with all student data."""
-        # Arrange
-        service = AIService()
-        mock_db = MagicMock()
+        result = await _advise(AIService(), mock_profile)
 
-        # Mock the AI client's generate_content method
-        service.ai_client.generate_content = Mock(return_value="Test advisement response")
+        assert result.next_semester == "Fall 2026"
+        assert result.compliance_cleared is True
+        assert [c.course_code for c in result.recommended_courses] == ["MAT 206"]
+        assert result.recommended_courses[0].credits == 4.0
+        assert ai_providers.gemini.calls == []
 
-        # Mock utils to return predictable values
-        with patch("app.services.ai_service.get_next_semester", return_value="Fall 2024"):
-            with patch("app.services.ai_service.calculate_remaining_credits", return_value=12):
-                # Act
-                result = await service.generate_advisement(
-                    profile=mock_profile,
-                    completed_courses=["MAT 157", "ENG 101"],
-                    in_progress_courses=["CSC 103"],
-                    planned_courses=[],
-                    available_courses=[{"code": "MAT 206", "title": "Precalculus"}],
-                    warnings=["Test warning"],
-                    current_planned_credits=0,
-                    db=mock_db,
-                    student_message="What next?",
-                )
+    async def test_prompt_includes_student_context(self, mock_profile, ai_providers):
+        ai_providers.claude.queue(PLAN)
 
-        # Assert - Verify AI client was called
-        assert service.ai_client.generate_content.called
-        call_args = service.ai_client.generate_content.call_args
+        await _advise(AIService(), mock_profile)
 
-        # Check that contents were passed (kwargs)
-        contents = call_args.kwargs["contents"]
-        assert len(contents) == 2  # System prompt + user prompt
+        prompt = ai_providers.claude.calls[0]["messages"][0]["content"]
+        for expected in (
+            "MAT 157, ENG 101",
+            "CSC 101",
+            "- MAT 206: Precalculus",
+            "pell",
+            "CSC-AS",
+            "Fall 2026",
+            "Pell Grant: recommend at least 6 credits.",
+            "What should I take next?",
+        ):
+            assert expected in prompt
 
-        # User prompt should contain student data
-        user_prompt = contents[1]
-        assert "MAT 157" in user_prompt
-        assert "ENG 101" in user_prompt
-        assert "CSC 103" in user_prompt
-        assert "MAT 206" in user_prompt
-        assert "Precalculus" in user_prompt
-        assert "Test warning" in user_prompt
-        assert "What next?" in user_prompt
+    async def test_empty_history_and_default_message(self, mock_profile, ai_providers):
+        ai_providers.claude.queue(PLAN)
 
-    @pytest.mark.asyncio
-    async def test_prompt_handles_empty_courses(self, mock_profile):
-        """Should handle empty course lists gracefully."""
-        service = AIService()
-        mock_db = MagicMock()
-        service.ai_client.generate_content = Mock(return_value="No courses completed yet")
+        await _advise(
+            AIService(),
+            mock_profile,
+            completed_courses=[],
+            in_progress_courses=[],
+            warnings=[],
+            student_message=None,
+        )
 
-        with patch("app.services.ai_service.get_next_semester", return_value="Fall 2024"):
-            with patch("app.services.ai_service.calculate_remaining_credits", return_value=18):
-                result = await service.generate_advisement(
-                    profile=mock_profile,
-                    completed_courses=[],
-                    in_progress_courses=[],
-                    planned_courses=[],
-                    available_courses=[],
-                    warnings=[],
-                    current_planned_credits=0,
-                    db=mock_db,
-                    student_message="Just starting out",
-                )
+        prompt = ai_providers.claude.calls[0]["messages"][0]["content"]
+        assert "None" in prompt
+        assert "All compliance checks passed." in prompt
+        assert "What should I take next?" in prompt
 
-        assert result == "No courses completed yet"
+    async def test_falls_back_to_gemini_when_claude_fails(self, mock_profile, ai_providers):
+        ai_providers.gemini.queue("```json\n" + json.dumps(PLAN) + "\n```")
 
-    @pytest.mark.asyncio
-    async def test_handles_gemini_api_error(self, mock_profile):
-        """Should gracefully handle API errors."""
-        service = AIService()
-        mock_db = MagicMock()
-        service.ai_client.generate_content = Mock(side_effect=Exception("API Error"))
+        result = await _advise(AIService(), mock_profile)
 
-        # Act
-        with patch("app.services.ai_service.get_next_semester", return_value="Fall 2024"):
-            with patch("app.services.ai_service.calculate_remaining_credits", return_value=12):
-                result = await service.generate_advisement(
-                    profile=mock_profile,
-                    completed_courses=["MAT 157"],
-                    in_progress_courses=[],
-                    planned_courses=[],
-                    available_courses=[{"code": "MAT 206", "title": "Precalculus"}],
-                    warnings=[],
-                    current_planned_credits=0,
-                    db=mock_db,
-                    student_message="Help?",
-                )
+        assert len(ai_providers.claude.calls) == 1
+        assert len(ai_providers.gemini.calls) == 1
+        assert result.recommended_courses[0].course_code == "MAT 206"
 
-        # Assert - Should return error message, not crash
-        assert "Error generating advisement" in result
+    async def test_falls_back_when_claude_reply_is_malformed(self, mock_profile, ai_providers):
+        ai_providers.claude.queue({"recommended_courses": [{"course_code": "MAT 206"}]})
+        ai_providers.gemini.queue(PLAN)
 
-    @pytest.mark.asyncio
-    async def test_default_message_when_none_provided(self, mock_profile):
-        """Should use default message when student_message is None."""
-        service = AIService()
-        mock_db = MagicMock()
-        service.ai_client.generate_content = Mock(return_value="Default response")
+        result = await _advise(AIService(), mock_profile)
 
-        with patch("app.services.ai_service.get_next_semester", return_value="Fall 2024"):
-            with patch("app.services.ai_service.calculate_remaining_credits", return_value=12):
-                result = await service.generate_advisement(
-                    profile=mock_profile,
-                    completed_courses=["MAT 157"],
-                    in_progress_courses=[],
-                    planned_courses=[],
-                    available_courses=[{"code": "MAT 206", "title": "Precalculus"}],
-                    warnings=[],
-                    current_planned_credits=0,
-                    db=mock_db,
-                    student_message=None,  # Explicitly None
-                )
+        assert result.recommended_courses[0].course_title == "Precalculus"
 
-        # Check that default message was used
-        call_args = service.ai_client.generate_content.call_args
-        contents = call_args.kwargs["contents"]
-        assert "What should I take next?" in contents[1]
+    async def test_raises_when_both_providers_fail(self, mock_profile, ai_providers):
+        ai_providers.claude.queue("not json")
+        ai_providers.gemini.queue("still not json")
 
-    @pytest.mark.asyncio
-    async def test_multiple_available_courses_formatted(self, mock_profile):
-        """Should format multiple available courses correctly."""
-        service = AIService()
-        mock_db = MagicMock()
-        service.ai_client.generate_content = Mock(return_value="Multiple courses response")
+        with pytest.raises(AdvisementGenerationError):
+            await _advise(AIService(), mock_profile)
 
-        available = [
-            {"code": "MAT 206", "title": "Precalculus"},
-            {"code": "ENG 201", "title": "Advanced Composition"},
-            {"code": "CSC 201", "title": "Computer Science I"},
-        ]
+    async def test_uses_configured_models(self, mock_profile, ai_providers):
+        from app.config import settings
 
-        with patch("app.services.ai_service.get_next_semester", return_value="Fall 2024"):
-            with patch("app.services.ai_service.calculate_remaining_credits", return_value=12):
-                result = await service.generate_advisement(
-                    profile=mock_profile,
-                    completed_courses=["MAT 157", "ENG 101"],
-                    in_progress_courses=[],
-                    planned_courses=[],
-                    available_courses=available,
-                    warnings=[],
-                    current_planned_credits=0,
-                    db=mock_db,
-                    student_message="What should I take?",
-                )
+        ai_providers.claude.queue(PLAN)
+        await _advise(AIService(), mock_profile)
 
-        # Assert all courses appear in prompt
-        call_args = service.ai_client.generate_content.call_args
-        contents = call_args.kwargs["contents"]
-        user_prompt = contents[1]
-        assert "MAT 206: Precalculus" in user_prompt
-        assert "ENG 201: Advanced Composition" in user_prompt
-        assert "CSC 201: Computer Science I" in user_prompt
+        assert ai_providers.claude.calls[0]["model"] == settings.CLAUDE_MODEL
 
 
 @pytest.mark.unit
-class TestAIServiceInitialization:
-    """Test service setup and configuration."""
-
-    def test_uses_configured_api_key(self):
-        """Should initialize AI client."""
-        service = AIService()
-        assert service.ai_client is not None
-
-    @pytest.mark.asyncio
-    async def test_uses_configured_model(self):
-        """Should use configured model for requests."""
-        service = AIService()
-        mock_db = MagicMock()
-        service.ai_client.generate_content = Mock(return_value="Response")
-        mock_profile = Mock(
-            enrollment_status="full-time",
-            student_type="regular",
-            financial_aid_type=None,
-            program_code="CSC-AS",
-            graduation_semester="Spring",
-            graduation_year=2026,
-        )
-
-        with patch("app.services.ai_service.get_next_semester", return_value="Fall 2024"):
-            with patch("app.services.ai_service.calculate_remaining_credits", return_value=12):
-                await service.generate_advisement(
-                    profile=mock_profile,
-                    completed_courses=[],
-                    in_progress_courses=[],
-                    planned_courses=[],
-                    available_courses=[],
-                    warnings=[],
-                    current_planned_credits=0,
-                    db=mock_db,
-                    student_message="Test",
-                )
-
-        # Verify AI client was called
-        assert service.ai_client.generate_content.called
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ('```json\n{"a": 1}\n```', '{"a": 1}'),
+        ("```\n[1, 2]\n```", "[1, 2]"),
+        ('  {"a": 1}  ', '{"a": 1}'),
+    ],
+)
+def test_strip_code_fences(raw: str, expected: str) -> None:
+    assert strip_code_fences(raw) == expected
