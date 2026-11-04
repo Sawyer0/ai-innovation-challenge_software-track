@@ -143,7 +143,7 @@ def find_program_description(custom_fields):
     if not isinstance(custom_fields, dict):
         return ""
     best = ""
-    for key, val in custom_fields.items():
+    for _key, val in custom_fields.items():
         if isinstance(val, str) and len(val) > len(best) and "<p>" in val.lower():
             best = val
     return strip_html(best)
@@ -413,7 +413,7 @@ async def main():
             completion_reqs = []
 
             if isinstance(detail_raw, dict) and not detail_raw.get("_error"):
-                for key, val in detail_raw.items():
+                for _key, val in detail_raw.items():
                     if not isinstance(val, dict):
                         continue
                     catalog_name = val.get("catalogDisplayName") or val.get("name", code)

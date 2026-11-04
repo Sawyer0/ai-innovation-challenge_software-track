@@ -1,3 +1,5 @@
+"""Manual smoke test against a running API: python scripts/smoke_api.py"""
+
 import asyncio
 
 import httpx

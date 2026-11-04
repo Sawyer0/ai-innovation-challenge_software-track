@@ -6,7 +6,7 @@ Uses generic factories to reduce boilerplate code.
 """
 
 from collections.abc import Callable
-from typing import Optional, Type, TypeVar
+from typing import TypeVar
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -18,10 +18,15 @@ from ..repositories.base import BaseRepository
 from ..repositories.course_repository import CourseRepository
 from ..repositories.program_repository import ProgramRepository
 from ..repositories.session_repository import SessionRepository
+from ..services.ai_service import AIService
+from ..services.cleanup_service import CleanupService
+from ..services.course_service import CourseService
+from ..services.parser_service import ParserService
+from ..services.prerequisite_service import PrerequisiteService
+from ..services.program_service import ProgramService
+from ..services.session_service import SessionService
 from .rate_limit import RateLimiter, get_rate_limiter, rate_limit
 
-# Generic type for repositories
-T = TypeVar("T")
 R = TypeVar("R", bound=BaseRepository)
 
 
@@ -53,18 +58,6 @@ get_course_repository = get_repository(CourseRepository)
 get_program_repository = get_repository(ProgramRepository)
 
 
-# Generic entity lookup factory
-def get_current_entity(
-    repo: BaseRepository, lookup_method: str, param_value: str, not_found_error: Exception
-):
-    """Generic helper to fetch an entity or raise an error."""
-    method = getattr(repo, lookup_method)
-    entity = method(param_value)
-    if not entity:
-        raise not_found_error
-    return entity
-
-
 def get_current_session(
     session_id: str, repo: SessionRepository = Depends(get_session_repository)
 ) -> StudentSession:
@@ -93,38 +86,6 @@ def get_current_program(
     if not program:
         raise ProgramNotFoundError()
     return program
-
-
-# Service imports and factories
-from ..services.ai_service import AIService
-from ..services.cleanup_service import CleanupService
-from ..services.course_service import CourseService
-from ..services.parser_service import ParserService
-from ..services.prerequisite_service import PrerequisiteService
-from ..services.program_service import ProgramService
-from ..services.session_service import SessionService
-
-
-def get_service(service_class: type[T], *repo_deps: Callable) -> Callable[..., T]:
-    """
-    Create a factory function for a service class.
-
-    Args:
-        service_class: Service class to instantiate
-        *repo_deps: Repository dependency factory functions
-
-    Returns:
-        Factory function for the service
-
-    Example:
-        get_course_service = get_service(CourseService, get_course_repository)
-    """
-
-    def factory(*repos):
-        return service_class(*repos)
-
-    factory.__signature__ = None  # Will be set by FastAPI Depends
-    return lambda **deps: service_class(*[deps.get(f"repo_{i}") for i in range(len(repo_deps))])
 
 
 def get_session_service(

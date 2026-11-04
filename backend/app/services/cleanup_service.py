@@ -61,10 +61,7 @@ class CleanupService:
         if not session:
             return False
 
-        if session.expires_at and session.expires_at < datetime.utcnow():
-            return False
-
-        return True
+        return not (session.expires_at and session.expires_at < datetime.utcnow())
 
     def cleanup_expired_sessions(self) -> dict:
         """

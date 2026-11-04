@@ -1,15 +1,16 @@
-import os
-import sys
+"""Re-import data/rules.json. Run from backend/: python -m app.scripts.reload_rules"""
 
-# Add backend to sys.path
-sys.path.append(os.path.join(os.getcwd()))
+from ..services.catalog_loader import DATA_DIR, load_rules
 
-from app.services.catalog_loader import load_rules
+
+def main() -> None:
+    rules_path = DATA_DIR / "rules.json"
+    if not rules_path.exists():
+        print(f"Error: {rules_path} not found.")
+        return
+    load_rules(str(rules_path))
+    print("Done!")
+
 
 if __name__ == "__main__":
-    rules_path = "data/rules.json"
-    if os.path.exists(rules_path):
-        load_rules(rules_path)
-        print("Done!")
-    else:
-        print(f"Error: {rules_path} not found.")
+    main()
