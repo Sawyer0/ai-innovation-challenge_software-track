@@ -1,5 +1,5 @@
 """
-Unit tests for academic utility functions.
+Unit tests for semester helpers and credit-load compliance rules.
 
 Tests semester calculations and enrollment rules.
 """
@@ -8,9 +8,8 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from app.utils.academic_utils import (
-    calculate_remaining_credits,
-    check_financial_aid_compliance,
+from app.academics.compliance import calculate_remaining_credits, check_financial_aid_compliance
+from app.academics.semesters import (
     get_current_academic_year,
     get_current_semester,
     get_next_semester,
@@ -47,7 +46,7 @@ class TestGetNextSemester:
         mock_now.year = 2024
 
         monkeypatch.setattr(
-            "app.utils.academic_utils.datetime", Mock(now=Mock(return_value=mock_now))
+            "app.academics.semesters.datetime", Mock(now=Mock(return_value=mock_now))
         )
 
         result = get_next_semester()
@@ -82,7 +81,7 @@ class TestGetCurrentSemester:
         mock_now.year = 2024
 
         monkeypatch.setattr(
-            "app.utils.academic_utils.datetime", Mock(now=Mock(return_value=mock_now))
+            "app.academics.semesters.datetime", Mock(now=Mock(return_value=mock_now))
         )
 
         result = get_current_semester()
@@ -248,7 +247,7 @@ class TestGetCurrentAcademicYear:
         mock_now.year = 2024
 
         monkeypatch.setattr(
-            "app.utils.academic_utils.datetime", Mock(now=Mock(return_value=mock_now))
+            "app.academics.semesters.datetime", Mock(now=Mock(return_value=mock_now))
         )
 
         result = get_current_academic_year()
@@ -261,7 +260,7 @@ class TestGetCurrentAcademicYear:
         mock_now.year = 2024
 
         monkeypatch.setattr(
-            "app.utils.academic_utils.datetime", Mock(now=Mock(return_value=mock_now))
+            "app.academics.semesters.datetime", Mock(now=Mock(return_value=mock_now))
         )
 
         result = get_current_academic_year()

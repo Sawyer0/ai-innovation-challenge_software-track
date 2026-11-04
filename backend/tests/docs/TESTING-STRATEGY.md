@@ -35,7 +35,7 @@ backend/tests/
 │   ├── __init__.py
 │   ├── test_prerequisites.py   # Prerequisite checking logic
 │   ├── test_enrollment_rules.py # Credit calculations
-│   ├── test_academic_utils.py   # Semester calculations
+│   ├── test_semesters_and_compliance.py # Semesters + compliance
 │   └── test_services/           # Business logic
 │       ├── test_session_service.py
 │       └── test_ai_service.py
@@ -182,7 +182,7 @@ class TestRemainingRequirements:
 """Unit tests for enrollment and financial aid calculations."""
 
 import pytest
-from app.utils.academic_utils import calculate_remaining_credits, check_financial_aid_compliance
+from app.academics.compliance import calculate_remaining_credits, check_financial_aid_compliance
 
 class TestCalculateRemainingCredits:
     """Test credit capacity calculations."""

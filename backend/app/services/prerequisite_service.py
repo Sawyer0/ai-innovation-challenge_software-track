@@ -1,7 +1,7 @@
+from ..academics.grades import meets_minimum_grade
 from ..models import CoursePrerequisite
 from ..repositories.course_repository import CourseRepository
 from ..repositories.program_repository import ProgramRepository
-from ..utils.grades import meets_minimum_grade
 
 
 class PrerequisiteService:

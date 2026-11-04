@@ -1,80 +1,11 @@
-"""
-Academic utility functions for semester calculations and enrollment logic.
-"""
+"""Deterministic compliance guardrails: financial aid, F-1 visa, Pell proration, TAP electives.
 
-from datetime import datetime
+These rules run before (and after) the AI and are never delegated to it.
+"""
 
 from sqlalchemy.orm import Session
 
 from .. import models
-
-
-def get_current_academic_year() -> int:
-    """Get the current academic year (e.g., 2024 for 2024-2025)."""
-    now = datetime.now()
-    # Academic year starts in Fall (September)
-    if now.month >= 9:
-        return now.year
-    return now.year - 1
-
-
-def get_next_semester() -> str:
-    """
-    Calculate the next academic semester based on current date.
-
-    Academic calendar:
-    - Fall: September - December
-    - Winter (optional): January
-    - Spring: January - May
-    - Summer: May - August
-
-    Returns:
-        String like "Fall 2024" or "Spring 2025"
-    """
-    now = datetime.now()
-    month = now.month
-    year = now.year
-
-    # Determine next semester based on current month
-    if month in [9, 10, 11, 12]:  # Fall - next is Spring
-        return f"Spring {year + 1}"
-    elif month in [1, 2, 3, 4, 5]:  # Spring/Spring - next is Summer or Fall
-        if month <= 3:  # Early Spring - next is Summer
-            return f"Summer {year}"
-        else:  # Late Spring - next is Fall
-            return f"Fall {year}"
-    else:  # Summer (May-August) - next is Fall
-        return f"Fall {year}"
-
-
-def get_current_semester() -> str:
-    """Get the current academic semester."""
-    now = datetime.now()
-    month = now.month
-    year = now.year
-
-    if month in [9, 10, 11, 12]:
-        return f"Fall {year}"
-    elif month in [1, 2, 3, 4, 5]:
-        return f"Spring {year}"
-    else:
-        return f"Summer {year}"
-
-
-def parse_semester(semester_str: str) -> tuple[str, int]:
-    """
-    Parse a semester string like 'Fall 2024' into (term, year).
-
-    Args:
-        semester_str: String like "Fall 2024" or "Spring 2025"
-
-    Returns:
-        Tuple of (term, year) like ("Fall", 2024)
-    """
-    parts = semester_str.split()
-    term = parts[0]
-    year = int(parts[1])
-    return term, year
 
 
 def calculate_remaining_credits(
@@ -106,29 +37,6 @@ def calculate_remaining_credits(
 
     remaining = max_credits - current_planned_credits
     return max(0, remaining)  # Don't return negative
-
-
-def get_min_credits_for_status(enrollment_status: str, db: Session) -> float:
-    """
-    Get minimum credits required for an enrollment status.
-
-    Args:
-        enrollment_status: Status like "full-time", "half-time"
-        db: Database session
-
-    Returns:
-        Minimum credits required
-    """
-    rule = (
-        db.query(models.EnrollmentStatusRule)
-        .filter(models.EnrollmentStatusRule.status_name == enrollment_status)
-        .first()
-    )
-
-    if not rule:
-        return 12.0  # Default to full-time minimum
-
-    return float(rule.min_credits)
 
 
 def check_financial_aid_compliance(
@@ -385,25 +293,3 @@ def check_visa_compliance(
         return False, " | ".join(violations)
 
     return True, None
-
-
-def format_course_list_for_prompt(courses: list) -> str:
-    """
-    Format a list of courses for inclusion in an AI prompt.
-
-    Args:
-        courses: List of course dicts with 'code' and 'title' keys
-
-    Returns:
-        Formatted string like "- MAT 206: Precalculus\n- ENG 101: Composition"
-    """
-    if not courses:
-        return "None"
-
-    formatted = []
-    for course in courses:
-        code = course.get("code", "Unknown")
-        title = course.get("title", "Unknown")
-        formatted.append(f"- {code}: {title}")
-
-    return "\n".join(formatted)
