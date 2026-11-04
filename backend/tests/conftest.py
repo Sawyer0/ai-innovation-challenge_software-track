@@ -7,22 +7,74 @@ Follows Google testing best practices:
 - Test database separate from dev/prod
 """
 
-from unittest.mock import Mock
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
 
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+CATALOG_PATH = Path(__file__).resolve().parents[1] / "data" / "bmcc-catalog.json"
 
-# Create test engine
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# In-memory database shared across connections, so no files are left behind.
+engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+class FakeProvider:
+    """Stands in for an AI provider: replays queued replies, records every call.
+
+    With nothing queued it raises, like a provider that is down or unconfigured.
+    """
+
+    def __init__(self) -> None:
+        self.replies: list[str] = []
+        self.calls: list[dict[str, Any]] = []
+
+    def queue(self, *replies: str | dict[str, Any] | list[Any]) -> None:
+        self.replies.extend(r if isinstance(r, str) else json.dumps(r) for r in replies)
+
+    def _next(self, **kwargs: Any) -> str:
+        self.calls.append(kwargs)
+        if not self.replies:
+            raise RuntimeError("provider unavailable (no reply queued)")
+        return self.replies.pop(0)
+
+
+class FakeClaude(FakeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.messages = SimpleNamespace(create=self._create)
+
+    def _create(self, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(content=[SimpleNamespace(text=self._next(**kwargs))])
+
+
+class FakeGemini(FakeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.models = SimpleNamespace(generate_content=self._generate)
+
+    def _generate(self, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(text=self._next(**kwargs))
+
+
+@pytest.fixture(autouse=True)
+def ai_providers(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    """Replace Claude and Gemini everywhere so no test can reach a real API."""
+    claude, gemini = FakeClaude(), FakeGemini()
+    for module in ("app.services.ai_service", "app.parsers.transcript_parser"):
+        monkeypatch.setattr(f"{module}.get_claude_client", lambda: claude)
+        monkeypatch.setattr(f"{module}.get_gemini_client", lambda: gemini)
+    monkeypatch.setattr("app.infrastructure.ai.client.get_gemini_client", lambda: gemini)
+    return SimpleNamespace(claude=claude, gemini=gemini)
 
 
 @pytest.fixture(scope="function")
@@ -109,30 +161,6 @@ def client(db):
 
 
 @pytest.fixture
-def mock_gemini_client(monkeypatch):
-    """
-    Mock Gemini API client for all AI-related tests.
-    Prevents real API calls during testing.
-    """
-
-    class MockGeminiClient:
-        def __init__(self, **kwargs):
-            pass
-
-        class models:
-            @staticmethod
-            def generate_content(**kwargs):
-                response = Mock()
-                response.text = "Mocked Gemini response"
-                return response
-
-    # Patch the Gemini client import path
-    monkeypatch.setattr("google.genai.Client", MockGeminiClient)
-
-    yield MockGeminiClient()
-
-
-@pytest.fixture
 def mock_profile():
     """
     Standard student profile for testing.
@@ -146,6 +174,9 @@ def mock_profile():
         program_code="CSC-AS",
         graduation_semester="Spring",
         graduation_year=2026,
+        classification="freshman",
+        academic_standing="good standing",
+        career_goal="robotics engineer",
     )
 
 
@@ -217,26 +248,13 @@ def full_catalog(db):
     Loads the complete BMCC catalog with all courses, prerequisites, and programs.
     Use for data quality tests that need full catalog data.
     """
-    import json
-    import os
     from decimal import Decimal
 
     from app.models import Course, CoursePrerequisite, Program, ProgramRequirement
 
-    # Find catalog file
-    catalog_paths = [
-        os.path.join(os.path.dirname(__file__), "../../bmcc-catalog.json"),
-        os.path.join(os.path.dirname(__file__), "../../../bmcc-catalog.json"),
-    ]
-
-    catalog_path = None
-    for path in catalog_paths:
-        if os.path.exists(path):
-            catalog_path = path
-            break
-
-    if not catalog_path:
-        pytest.skip("bmcc-catalog.json not found - cannot load full catalog")
+    catalog_path = CATALOG_PATH
+    if not catalog_path.exists():
+        pytest.skip("data/bmcc-catalog.json not found - cannot load full catalog")
 
     # Load catalog JSON
     with open(catalog_path, encoding="utf-8") as f:

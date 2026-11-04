@@ -1,295 +1,215 @@
 """
-End-to-end tests for complete user workflows.
-
-These tests verify complete user journeys from start to finish.
-They are slower and should be run less frequently.
+End-to-end tests for complete user journeys, mirroring what the React app does:
+create session -> upload transcript -> review and save courses -> set profile
+-> get advisement. AI providers are the fakes from conftest.
 """
 
 from io import BytesIO
-from unittest.mock import Mock, patch
 
 import pytest
+
+from app import models
+
+TRANSCRIPT = {
+    "profile": {"school": "BMCC", "program_code": "CSC-AS", "classification": "freshman"},
+    "courses": [
+        {
+            "course_code": "MAT 157",
+            "semester_taken": "Spring 2025",
+            "status": "completed",
+            "grade": "A",
+            "credits": 4,
+        },
+        {
+            "course_code": "ENG 101",
+            "semester_taken": "Spring 2025",
+            "status": "completed",
+            "grade": "B+",
+            "credits": 3,
+        },
+    ],
+}
+
+PLAN = {
+    "advisor_message": "With MAT 157 done, Precalculus keeps you on the engineering track.",
+    "recommended_courses": [
+        {
+            "course_code": code,
+            "course_title": title,
+            "credits": credits,
+            "requirement_satisfied": "Required",
+            "compliance_status": "compliant",
+            "compliance_note": None,
+            "career_rationale": "Builds toward robotics.",
+            "why_now": "Prerequisites are complete.",
+        }
+        for code, title, credits in [
+            ("MAT 206", "Precalculus", 4),
+            ("ENG 201", "Composition II", 3),
+            ("CSC 101", "Principles in IT", 3),
+            ("SCI 120", "Lab Science", 2),
+        ]
+    ],
+}
+
+
+@pytest.fixture
+def csc_program(db):
+    """CSC-AS requires MAT 206 (prereq MAT 157) and ENG 201 (prereq ENG 101)."""
+    courses = {
+        code: models.Course(code=code, title=title, credits=credits)
+        for code, title, credits in [
+            ("MAT 157", "College Algebra", 4),
+            ("MAT 206", "Precalculus", 4),
+            ("ENG 101", "Composition I", 3),
+            ("ENG 201", "Composition II", 3),
+        ]
+    }
+    program = models.Program(program_code="CSC-AS", name="Computer Science", degree="A.S.")
+    db.add_all([*courses.values(), program])
+    db.commit()
+    db.add_all(
+        [
+            models.CoursePrerequisite(
+                course_id=courses["MAT 206"].id, prerequisite_course_code="MAT 157"
+            ),
+            models.CoursePrerequisite(
+                course_id=courses["ENG 201"].id, prerequisite_course_code="ENG 101"
+            ),
+            models.ProgramRequirement(program_id=program.id, course_code="MAT 206"),
+            models.ProgramRequirement(program_id=program.id, course_code="ENG 201"),
+        ]
+    )
+    db.commit()
 
 
 @pytest.mark.e2e
 @pytest.mark.slow
 class TestCompleteStudentWorkflow:
-    """Test full user journey: create → upload → get advisement."""
+    def test_transcript_to_personalized_plan(self, client, csc_program, ai_providers):
+        ai_providers.claude.queue(TRANSCRIPT, PLAN)
 
-    @patch("app.infrastructure.ai.client.genai.Client")
-    def test_new_student_gets_personalized_advisement(self, mock_client_class, client):
-        """
-        E2E: New student creates session, uploads transcript,
-        sets profile, receives AI advisement.
-        """
-        # Reset singleton to force re-initialization
-        from app.infrastructure.ai.client import AIClient
+        session_id = client.post("/api/session").json()["session_id"]
 
-        AIClient._instance = None
-
-        # Setup Gemini mock
-        mock_client = Mock()
-        mock_client_class.return_value = mock_client
-
-        # First call is for transcript parsing
-        parser_response = Mock()
-        parser_response.text = """[
-            {"course_code": "MAT 157", "semester_taken": "Spring 2023", "status": "completed", "grade": "A", "credits": 4},
-            {"course_code": "ENG 101", "semester_taken": "Spring 2023", "status": "completed", "grade": "B+", "credits": 3}
-        ]"""
-
-        # Second call is for advisement
-        ai_response = Mock()
-        ai_response.text = "Since you've completed MAT 157 and ENG 101, you can take MAT 206 and ENG 201 this Fall. That would give you 7 credits. Does that sound like a plan?"
-
-        # Configure mock to return different responses for different calls
-        mock_client.models.generate_content.side_effect = [parser_response, ai_response]
-
-        # 1. Create session
-        resp = client.post("/api/session")
-        assert resp.status_code == 200
-        session_id = resp.json()["session_id"]
-
-        # 2. Upload transcript (mocked image)
-        fake_image = BytesIO(b"fake transcript image data")
-        resp = client.post(
+        parsed = client.post(
             f"/api/session/{session_id}/transcript",
-            files={"file": ("transcript.png", fake_image, "image/png")},
+            files={"file": ("transcript.png", BytesIO(b"fake image"), "image/png")},
         )
-        assert resp.status_code == 200
-        assert resp.json()["courses"][0]["course_code"] == "MAT 157"
+        assert parsed.status_code == 200
+        courses = parsed.json()["courses"]
+        assert [c["course_code"] for c in courses] == ["MAT 157", "ENG 101"]
 
-        # 3. Set profile
+        saved = client.post(f"/api/session/{session_id}/courses/bulk", json=courses)
+        assert saved.json() == {"saved": 2, "total": 2}
+
+        profile = {
+            "school": "BMCC",
+            "program_code": "CSC-AS",
+            "enrollment_status": "full-time",
+            "financial_aid_type": "pell",
+            "career_goal": "robotics engineer",
+            "graduation_year": 2027,
+            "graduation_semester": "Spring",
+        }
+        assert client.post(f"/api/session/{session_id}/profile", json=profile).status_code == 200
+
+        eligible = client.get(f"/api/session/{session_id}/advisement/eligible").json()
+        assert eligible["eligible_courses"] == ["MAT 206", "ENG 201"]
+
         resp = client.post(
-            f"/api/session/{session_id}/profile",
-            json={
-                "school": "BMCC",
-                "program_code": "CSC-AS",
-                "enrollment_status": "full-time",
-                "financial_aid_type": "pell",
-                "graduation_year": 2026,
-                "graduation_semester": "Spring",
-            },
-        )
-        assert resp.status_code == 200
-
-        # 4. Get eligible courses
-        resp = client.get(f"/api/advisement/eligible?session_id={session_id}")
-        assert resp.status_code == 200
-        eligible = resp.json()["eligible_courses"]
-        assert isinstance(eligible, list)
-
-        # 5. Get AI advisement
-        resp = client.post(
-            f"/api/advisement?session_id={session_id}",
+            f"/api/session/{session_id}/advisement",
             json={"message": "What should I take next semester?"},
         )
         assert resp.status_code == 200
-        advisement = resp.json()["response"]
-        assert len(advisement) > 0
-        assert "MAT 157" in advisement or "ENG 101" in advisement
+        plan = resp.json()
+        assert plan["recommended_courses"][0]["course_code"] == "MAT 206"
+        assert plan["total_planned_credits"] == 12.0
+        assert plan["pell_proration"]["percentage_display"] == "100%"
 
-        # 6. Verify session state persisted
-        resp = client.get(f"/api/session/{session_id}")
-        assert resp.status_code == 200
-        session_data = resp.json()
-        assert session_data["profile"]["program_code"] == "CSC-AS"
-        assert len(session_data["courses"]) == 2
+        advisement_prompt = ai_providers.claude.calls[1]["messages"][0]["content"]
+        assert "MAT 157, ENG 101" in advisement_prompt or "ENG 101, MAT 157" in advisement_prompt
+        assert "robotics engineer" in advisement_prompt
 
-    @patch("app.infrastructure.ai.client.genai.Client")
-    def test_student_can_manually_add_courses(self, mock_client_class, client):
-        """
-        E2E: Student manually adds courses instead of uploading transcript.
-        """
-        # Reset singleton to force re-initialization
-        from app.infrastructure.ai.client import AIClient
+        session = client.get(f"/api/session/{session_id}").json()
+        assert session["profile"]["program_code"] == "CSC-AS"
+        assert len(session["courses"]) == 2
 
-        AIClient._instance = None
-
-        # Mock AI response
-        mock_client = Mock()
-        mock_client_class.return_value = mock_client
-        ai_response = Mock()
-        ai_response.text = "Based on your completed courses, you can take MAT 206 next."
-        mock_client.models.generate_content.return_value = ai_response
-
-        # 1. Create session
+    def test_student_can_manually_add_courses(self, client, csc_program, ai_providers):
+        ai_providers.claude.queue(PLAN)
         session_id = client.post("/api/session").json()["session_id"]
-
-        # 2. Set profile
         client.post(
             f"/api/session/{session_id}/profile",
             json={"school": "BMCC", "program_code": "CSC-AS", "enrollment_status": "full-time"},
         )
 
-        # 3. Manually add courses one by one
-        courses_to_add = [
-            {
-                "course_code": "MAT 157",
-                "status": "completed",
-                "semester_taken": "Fall 2023",
-                "credits": 4,
-                "grade": "A",
-            },
-            {
-                "course_code": "ENG 101",
-                "status": "completed",
-                "semester_taken": "Fall 2023",
-                "credits": 3,
-                "grade": "B+",
-            },
-            {
-                "course_code": "CSC 103",
-                "status": "completed",
-                "semester_taken": "Spring 2024",
-                "credits": 3,
-                "grade": "A-",
-            },
-        ]
-
-        for course in courses_to_add:
-            resp = client.post(f"/api/session/{session_id}/courses", json=course)
+        for code, credits in [("MAT 157", 4), ("ENG 101", 3)]:
+            resp = client.post(
+                f"/api/session/{session_id}/courses",
+                json={"course_code": code, "status": "completed", "credits": credits},
+            )
             assert resp.status_code == 200
 
-        # 4. Get advisement
         resp = client.post(
-            f"/api/advisement?session_id={session_id}", json={"message": "What should I take?"}
+            f"/api/session/{session_id}/advisement", json={"message": "What should I take?"}
         )
         assert resp.status_code == 200
-        assert "response" in resp.json()
+        assert len(resp.json()["recommended_courses"]) == 4
 
-    @patch("app.services.parser_service.detect_and_parse")
-    @patch("app.services.ai_service.AIService")
-    def test_financial_aid_warning_included(
-        self, mock_ai_service_class, mock_detect_and_parse, client
-    ):
-        """
-        E2E: Student with Pell Grant gets warning about credit minimums.
-        """
-        import os
-
-        # Mock the parser to return structured data
-        mock_detect_and_parse.return_value = {
-            "source": "transcript",
-            "confidence": 0.9,
-            "student": {},
-            "courses": {
-                "completed": [
-                    {
-                        "course_code": "MAT 157",
-                        "semester_taken": "Fall 2023",
-                        "status": "completed",
-                        "grade": "A",
-                        "credits": 4,
-                    }
-                ],
-                "in_progress": [],
-                "still_needed": [],
-                "fall_through": [],
-            },
-            "all_courses": [
-                {
-                    "course_code": "MAT 157",
-                    "semester_taken": "Fall 2023",
-                    "status": "completed",
-                    "grade": "A",
-                    "credits": 4,
-                }
-            ],
-            "requirements": [],
-            "validated": [
-                {
-                    "course_code": "MAT 157",
-                    "semester_taken": "Fall 2023",
-                    "status": "completed",
-                    "grade": "A",
-                    "credits": 4,
-                }
-            ],
-            "flagged": [],
-            "invalid": [],
-            "requires_confirmation": False,
-        }
-
-        # Mock AI service
-        mock_ai_service = Mock()
-        mock_ai_service.generate_advisement = Mock(
-            return_value="Since you're on Pell Grant, make sure to take at least 6 credits. You can take MAT 206 (4 credits) and add a 3-credit elective."
-        )
-        mock_ai_service_class.return_value = mock_ai_service
-
-        # 1. Create session with Pell Grant
+    def test_tap_student_gets_elective_warning(self, client, csc_program, ai_providers):
+        ai_providers.claude.queue(PLAN)
         session_id = client.post("/api/session").json()["session_id"]
-
-        # 2. Upload actual PDF
-        pdf_path = os.path.join(os.path.dirname(__file__), "../../assets/degree-works-ds.pdf")
-        with open(pdf_path, "rb") as pdf_file:
-            client.post(
-                f"/api/session/{session_id}/transcript",
-                files={"file": ("degree-works-ds.pdf", pdf_file, "application/pdf")},
-            )
-
-        # 3. Set profile with Pell Grant
         client.post(
             f"/api/session/{session_id}/profile",
             json={
-                "school": "BMCC",
                 "program_code": "CSC-AS",
-                "enrollment_status": "half-time",
-                "financial_aid_type": "pell",
+                "enrollment_status": "full-time",
+                "financial_aid_type": "tap",
             },
         )
 
-        # 4. Get advisement
-        resp = client.post(
-            f"/api/advisement?session_id={session_id}", json={"message": "What should I take?"}
-        )
-        assert resp.status_code == 200
+        plan = client.post(f"/api/session/{session_id}/advisement", json={"message": "?"}).json()
 
-        # Verify AI service was called
-        assert mock_ai_service.generate_advisement.called
+        status = {c["course_code"]: c["compliance_status"] for c in plan["recommended_courses"]}
+        # Required courses are TAP-allowable; courses outside the program are flagged.
+        assert status["MAT 206"] == "compliant"
+        assert status["CSC 101"] == "warning"
 
 
 @pytest.mark.e2e
 @pytest.mark.slow
 class TestErrorHandlingWorkflows:
-    """Test error scenarios and edge cases."""
-
     def test_invalid_session_id_returns_404(self, client):
-        """All endpoints should handle invalid session IDs gracefully."""
-        # Test various endpoints with invalid session
-        resp = client.get("/api/session/invalid-uuid")
-        assert resp.status_code == 404
-
-        resp = client.post("/api/session/invalid-uuid/profile", json={"school": "BMCC"})
-        assert resp.status_code == 404
-
-        resp = client.post("/api/session/invalid-uuid/courses", json={"course_code": "MAT 101"})
-        assert resp.status_code == 404
+        assert client.get("/api/session/invalid-uuid").status_code == 404
+        assert (
+            client.post("/api/session/invalid-uuid/profile", json={"school": "BMCC"}).status_code
+            == 404
+        )
+        assert (
+            client.post(
+                "/api/session/invalid-uuid/courses", json={"course_code": "MAT 101"}
+            ).status_code
+            == 404
+        )
 
     def test_advisement_without_profile_returns_error(self, client):
-        """Advisement requires profile to be set."""
         session_id = client.post("/api/session").json()["session_id"]
 
-        resp = client.post(f"/api/advisement?session_id={session_id}", json={"message": "Help?"})
+        resp = client.post(f"/api/session/{session_id}/advisement", json={"message": "Help?"})
+
         assert resp.status_code == 400
         assert "profile" in resp.json()["detail"].lower()
 
     def test_cannot_add_duplicate_courses(self, client):
-        """Adding same course twice should handle gracefully."""
         session_id = client.post("/api/session").json()["session_id"]
 
-        # Add course first time
         resp = client.post(
             f"/api/session/{session_id}/courses",
             json={"course_code": "MAT 206", "status": "completed", "credits": 4},
         )
         assert resp.status_code == 200
 
-        # Add same course again (should succeed, may update)
         resp = client.post(
             f"/api/session/{session_id}/courses",
             json={"course_code": "MAT 206", "status": "in-progress", "credits": 4},
         )
-        # Either 200 (updated) or 409 (conflict) is acceptable
         assert resp.status_code in [200, 409]
