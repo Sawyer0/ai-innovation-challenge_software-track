@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from ..dependencies import get_current_session, get_parser_service
 from ..models import StudentSession
+from ..parsers.transcript_parser import TranscriptParsingError
 from ..services.parser_service import ParserService
 
 router = APIRouter(prefix="/api/session", tags=["upload"])
@@ -28,6 +29,6 @@ async def upload_file(
         )
         return result
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process file: {e}")
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TranscriptParsingError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e

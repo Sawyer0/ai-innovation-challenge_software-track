@@ -6,14 +6,13 @@ from typing import Any
 
 from fastapi import UploadFile
 
-from ..infrastructure.ai import AIError, get_ai_client
+from ..infrastructure.ai import get_ai_client, safe_json_parse
 from ..parsers.validators import (
     deduplicate_courses,
     flag_low_confidence_courses,
     validate_course_codes,
 )
 from ..prompts import DEGREEWORKS_SYSTEM_PROMPT, DEGREEWORKS_USER_PROMPT
-from ..utils.ai_helpers import safe_json_parse
 
 
 class DegreeWorksParser:
@@ -95,10 +94,8 @@ class DegreeWorksParser:
                 "requires_confirmation": len(flagged) > 0 or len(invalid_courses) > 0,
             }
 
-        except AIError as e:
-            raise ValueError(f"AI parsing error: {e}")
         except Exception as e:
-            raise ValueError(f"Failed to parse DegreeWorks PDF: {e}")
+            raise ValueError(f"Failed to parse DegreeWorks PDF: {e}") from e
 
     def _calculate_confidence(
         self, base_confidence: float, courses: list[dict], invalid_count: int

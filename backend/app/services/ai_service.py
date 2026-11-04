@@ -1,10 +1,13 @@
-import json
+"""Course advisement generation: Claude first, Gemini as a fallback."""
 
-import anthropic
-from google import genai
+import asyncio
+import logging
+from typing import Any
+
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..infrastructure.ai import get_claude_client, get_gemini_client, parse_json_response
 from ..models import StudentProfile
 from ..prompts import (
     ADVISEMENT_SYSTEM_PROMPT,
@@ -13,36 +16,16 @@ from ..prompts import (
 from ..schemas import AdvisementResponse, RecommendedCourse
 from ..utils import calculate_remaining_credits, get_next_semester
 
-_claude_client: anthropic.Anthropic | None = None
-_gemini_client: genai.Client | None = None
+logger = logging.getLogger(__name__)
 
 
-def _get_claude_client() -> anthropic.Anthropic:
-    global _claude_client
-    if _claude_client is None:
-        _claude_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    return _claude_client
+class AdvisementGenerationError(RuntimeError):
+    """Raised when neither AI provider returns a usable advisement."""
 
 
-def _get_gemini_client() -> genai.Client:
-    global _gemini_client
-    if _gemini_client is None:
-        _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    return _gemini_client
-
-
-def _clean_json(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```json"):
-        text = text[7:]
-    elif text.startswith("```"):
-        text = text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    return text.strip()
-
-
-def _parse_advisement(raw: dict, next_semester: str, planned_credits: float) -> AdvisementResponse:
+def _parse_advisement(
+    raw: dict[str, Any], next_semester: str, planned_credits: float
+) -> AdvisementResponse:
     courses = [
         RecommendedCourse(
             course_code=c["course_code"],
@@ -74,12 +57,12 @@ class AIService:
         completed_courses: list[str],
         in_progress_courses: list[str],
         planned_courses: list[str],
-        available_courses: list[dict],
+        available_courses: list[dict[str, str]],
         warnings: list[str],
         current_planned_credits: float,
         db: Session,
         student_message: str | None = None,
-    ) -> str:
+    ) -> AdvisementResponse:
         """Generate personalized course advisement using imported prompts."""
 
         # Calculate dynamic values
@@ -113,38 +96,43 @@ class AIService:
             student_message=student_message or "What should I take next?",
         )
 
-        raw = await self._call_claude(user_prompt)
-        if raw is None:
-            raw = await self._call_gemini(user_prompt)
-        if raw is None:
-            raise Exception(
-                "Advisement generation failed: both Claude and Gemini were unable to respond."
-            )
+        for provider in (self._call_claude, self._call_gemini):
+            raw = await provider(user_prompt)
+            if raw is None:
+                continue
+            try:
+                return _parse_advisement(raw, next_semester, current_planned_credits)
+            except (KeyError, TypeError, ValueError) as e:
+                logger.warning("Malformed advisement from %s: %s", provider.__name__, e)
 
-        return _parse_advisement(raw, next_semester, current_planned_credits)
+        raise AdvisementGenerationError(
+            "Advisement generation failed: neither Claude nor Gemini returned a usable plan."
+        )
 
-    async def _call_claude(self, user_prompt: str) -> dict | None:
+    async def _call_claude(self, user_prompt: str) -> dict[str, Any] | None:
         try:
-            client = _get_claude_client()
-            message = client.messages.create(
+            message = await asyncio.to_thread(
+                get_claude_client().messages.create,
                 model=settings.CLAUDE_MODEL,
                 max_tokens=2048,
                 system=ADVISEMENT_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_prompt}],
             )
-            return json.loads(_clean_json(message.content[0].text))
+            result: dict[str, Any] = parse_json_response(message.content[0].text)
+            return result
         except Exception as e:
-            print(f"Claude advisement failed: {e} — trying Gemini")
+            logger.warning("Claude advisement failed, trying Gemini: %s", e)
             return None
 
-    async def _call_gemini(self, user_prompt: str) -> dict | None:
+    async def _call_gemini(self, user_prompt: str) -> dict[str, Any] | None:
         try:
-            client = _get_gemini_client()
-            response = client.models.generate_content(
+            response = await asyncio.to_thread(
+                get_gemini_client().models.generate_content,
                 model=settings.GEMINI_MODEL,
                 contents=[ADVISEMENT_SYSTEM_PROMPT, user_prompt],
             )
-            return json.loads(_clean_json(response.text))
+            result: dict[str, Any] = parse_json_response(response.text or "")
+            return result
         except Exception as e:
-            print(f"Gemini advisement failed: {e}")
+            logger.warning("Gemini advisement failed: %s", e)
             return None

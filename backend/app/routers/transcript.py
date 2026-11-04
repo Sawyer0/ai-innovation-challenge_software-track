@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from ..dependencies import get_current_session, get_parser_service
 from ..models import StudentSession
+from ..parsers.transcript_parser import TranscriptParsingError
 from ..services.parser_service import ParserService
 
 router = APIRouter(prefix="/api/session", tags=["session"])
@@ -13,8 +14,10 @@ async def upload_transcript(
     session: StudentSession = Depends(get_current_session),
     parser_service: ParserService = Depends(get_parser_service),
 ):
+    """Parse an uploaded transcript (PDF or image) into {profile, courses} for review."""
     try:
-        result = await parser_service.parse_and_save(file, session.session_id)
-        return result  # {profile: {...}, courses: [...]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return await parser_service.parse_and_save(file, session.session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TranscriptParsingError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e

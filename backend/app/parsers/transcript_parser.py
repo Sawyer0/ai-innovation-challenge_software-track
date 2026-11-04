@@ -1,49 +1,28 @@
+import asyncio
 import base64
 import csv
 import io
-import json
+import logging
 from typing import Any
 
-import anthropic
 from fastapi import UploadFile
-from google import genai
 from google.genai import types as genai_types
 
 from ..config import settings
+from ..infrastructure.ai import get_claude_client, get_gemini_client, parse_json_response
 from ..prompts import (
     TRANSCRIPT_PARSING_SYSTEM_PROMPT,
     TRANSCRIPT_PARSING_USER_PROMPT,
 )
 from .validators import validate_course_codes
 
-_claude_client = None
-_gemini_client = None
+logger = logging.getLogger(__name__)
+
+SUPPORTED_MIME_TYPES = {"application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp"}
 
 
-def _get_claude_client() -> anthropic.Anthropic:
-    global _claude_client
-    if _claude_client is None:
-        _claude_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    return _claude_client
-
-
-def _get_gemini_client() -> genai.Client:
-    global _gemini_client
-    if _gemini_client is None:
-        _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    return _gemini_client
-
-
-def _clean_json(text: str) -> str:
-    """Strip markdown code fences from an LLM JSON response."""
-    text = text.strip()
-    if text.startswith("```json"):
-        text = text[7:]
-    elif text.startswith("```"):
-        text = text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    return text.strip()
+class TranscriptParsingError(RuntimeError):
+    """Raised when neither AI provider could read the transcript."""
 
 
 def _normalize_result(raw: dict | list) -> dict:
@@ -69,7 +48,6 @@ def _normalize_result(raw: dict | list) -> dict:
 
 
 async def _parse_with_claude(file_content: bytes, mime_type: str) -> dict:
-    client = _get_claude_client()
 
     if mime_type == "application/pdf":
         content_block = {
@@ -90,7 +68,8 @@ async def _parse_with_claude(file_content: bytes, mime_type: str) -> dict:
             },
         }
 
-    message = client.messages.create(
+    message = await asyncio.to_thread(
+        get_claude_client().messages.create,
         model=settings.CLAUDE_MODEL,
         max_tokens=4096,
         system=TRANSCRIPT_PARSING_SYSTEM_PROMPT,
@@ -105,14 +84,13 @@ async def _parse_with_claude(file_content: bytes, mime_type: str) -> dict:
         ],
     )
 
-    raw = json.loads(_clean_json(message.content[0].text))
+    raw = parse_json_response(message.content[0].text)
     return _normalize_result(raw)
 
 
 async def _parse_with_gemini(file_content: bytes, mime_type: str) -> dict:
-    client = _get_gemini_client()
-
-    response = client.models.generate_content(
+    response = await asyncio.to_thread(
+        get_gemini_client().models.generate_content,
         model=settings.GEMINI_MODEL,
         contents=[
             TRANSCRIPT_PARSING_SYSTEM_PROMPT,
@@ -121,7 +99,7 @@ async def _parse_with_gemini(file_content: bytes, mime_type: str) -> dict:
         ],
     )
 
-    raw = json.loads(_clean_json(response.text))
+    raw = parse_json_response(response.text or "")
     return _normalize_result(raw)
 
 
@@ -132,23 +110,27 @@ async def parse_transcript(file: UploadFile) -> dict:
     """
     file_content = await file.read()
     await file.seek(0)
-    mime_type = file.content_type
+    mime_type = file.content_type or ""
+    if mime_type not in SUPPORTED_MIME_TYPES:
+        raise ValueError(
+            f"Unsupported file type {mime_type or 'unknown'}; upload a PDF or an image."
+        )
 
     try:
         result = await _parse_with_claude(file_content, mime_type)
-        print("Transcript parsed via Claude")
+        logger.info("Transcript parsed via Claude")
         return result
     except Exception as claude_err:
-        print(f"Claude parsing failed: {claude_err} — trying Gemini")
+        logger.warning("Claude parsing failed, trying Gemini: %s", claude_err)
 
     try:
         result = await _parse_with_gemini(file_content, mime_type)
-        print("Transcript parsed via Gemini (fallback)")
+        logger.info("Transcript parsed via Gemini (fallback)")
         return result
     except Exception as gemini_err:
-        print(f"Gemini parsing failed: {gemini_err}")
+        logger.warning("Gemini parsing failed: %s", gemini_err)
 
-    raise Exception(
+    raise TranscriptParsingError(
         "Transcript parsing failed: both Claude and Gemini were unable to process the file."
     )
 
