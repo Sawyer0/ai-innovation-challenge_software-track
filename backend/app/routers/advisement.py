@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..dependencies import get_ai_service, get_current_session, get_db, get_prerequisite_service
 from ..dependencies.rate_limit import rate_limit
-from ..services.ai_service import AIService
+from ..services.ai_service import AdvisementGenerationError, AIService
 from ..services.prerequisite_service import PrerequisiteService
 from ..utils import (
     calculate_pell_proration,
@@ -131,17 +131,20 @@ async def advisement(
             "No financial aid or visa constraints — recommend a standard full-time load (12–15 credits)."
         )
 
-    response = await ai_service.generate_advisement(
-        profile=profile,
-        completed_courses=completed_courses,
-        in_progress_courses=in_progress_courses,
-        planned_courses=planned_course_codes,
-        available_courses=available_courses,
-        warnings=warnings,
-        current_planned_credits=current_planned_credits,
-        db=db,
-        student_message=chat_msg.message,
-    )
+    try:
+        response = await ai_service.generate_advisement(
+            profile=profile,
+            completed_courses=completed_courses,
+            in_progress_courses=in_progress_courses,
+            planned_courses=planned_course_codes,
+            available_courses=available_courses,
+            warnings=warnings,
+            current_planned_credits=current_planned_credits,
+            db=db,
+            student_message=chat_msg.message,
+        )
+    except AdvisementGenerationError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     # --- TAP elective check (post-AI annotation, not a hard block) ---
     check_tap_elective_compliance(
