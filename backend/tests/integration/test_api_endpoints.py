@@ -100,6 +100,20 @@ class TestSessionEndpoints:
 
 
 @pytest.mark.integration
+class TestSessionStatus:
+    def test_status_reports_valid_session(self, client):
+        session_id = client.post("/api/session").json()["session_id"]
+
+        response = client.get(f"/api/session/{session_id}/status")
+
+        assert response.status_code == 200
+        assert response.json()["is_valid"] is True
+
+    def test_status_404_for_unknown_session(self, client):
+        assert client.get("/api/session/nope/status").status_code == 404
+
+
+@pytest.mark.integration
 class TestCourseEndpoints:
     """Test course catalog endpoints."""
 

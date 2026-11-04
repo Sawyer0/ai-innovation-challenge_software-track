@@ -4,12 +4,17 @@ Repository for cleanup operations - expired sessions and orphaned data.
 
 from datetime import datetime
 
+from sqlalchemy.orm import Session
+
 from ..models import StudentCourse, StudentSession
 from .base import BaseRepository
 
 
-class CleanupRepository(BaseRepository):
+class CleanupRepository(BaseRepository[StudentSession]):
     """Repository for cleanup and maintenance operations."""
+
+    def __init__(self, db: Session):
+        super().__init__(db, StudentSession)
 
     def get_expired_sessions(self, cutoff_date: datetime) -> list[StudentSession]:
         """
