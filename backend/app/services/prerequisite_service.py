@@ -117,3 +117,11 @@ class PrerequisiteService:
                 remaining.append(req.course_code)
 
         return remaining
+
+    def get_eligible_courses(self, program_code: str, satisfied_codes: list[str]) -> list[str]:
+        """Remaining program requirements whose prerequisites are met, in catalog order."""
+        eligible: list[str] = []
+        for code in self.get_remaining_requirements(program_code, satisfied_codes):
+            if code not in eligible and self.check_prerequisites(code, satisfied_codes):
+                eligible.append(code)
+        return eligible

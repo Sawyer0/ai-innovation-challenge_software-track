@@ -16,32 +16,26 @@ from ..utils import (
 router = APIRouter(prefix="/api/session", tags=["advisement"])
 
 
+def _satisfied_course_codes(session: models.StudentSession) -> list[str]:
+    """Completed and in-progress courses both count toward prerequisites."""
+    return sorted(
+        {c.course_code for c in session.courses if c.status in ("completed", "in-progress")}
+    )
+
+
 @router.get("/{session_id}/advisement/eligible")
 def get_eligible_courses(
     session: models.StudentSession = Depends(get_current_session),
     prereq_service: PrerequisiteService = Depends(get_prerequisite_service),
-):
-    try:
-        profile = session.profile
-        if not profile or not profile.program_code:
-            raise HTTPException(status_code=400, detail="Student profile or program code not set")
+) -> dict[str, list[str]]:
+    profile = session.profile
+    if not profile or not profile.program_code:
+        raise HTTPException(status_code=400, detail="Student profile or program code not set")
 
-        completed_courses = [c.course_code for c in session.courses if c.status == "completed"]
-        remaining_reqs = prereq_service.get_remaining_requirements(
-            profile.program_code, completed_courses
-        )
-
-        eligible = []
-        for req in remaining_reqs:
-            if prereq_service.check_prerequisites(req, completed_courses):
-                eligible.append(req)
-
-        return {"eligible_courses": eligible}
-    except Exception:
-        import traceback
-
-        error_msg = traceback.format_exc()
-        raise HTTPException(status_code=500, detail=error_msg)
+    eligible = prereq_service.get_eligible_courses(
+        profile.program_code, _satisfied_course_codes(session)
+    )
+    return {"eligible_courses": eligible}
 
 
 @router.post("/{session_id}/advisement", response_model=schemas.AdvisementResponse)
@@ -70,26 +64,15 @@ async def advisement(
         for c in planned_courses_list
     )
 
-    # Treat in-progress courses as satisfying prerequisites (the student is enrolled)
-    courses_for_prereqs = list(set(completed_courses + in_progress_courses))
-
-    # Get remaining requirements and check eligibility
-    remaining_reqs = (
-        prereq_service.get_remaining_requirements(profile.program_code, courses_for_prereqs)
+    eligible_codes = (
+        prereq_service.get_eligible_courses(profile.program_code, _satisfied_course_codes(session))
         if profile.program_code
         else []
     )
-
-    # Get full course details from database for available courses
-    seen_codes: set[str] = set()
     available_courses = []
-    for req in remaining_reqs:
-        if req in seen_codes:
-            continue
-        if prereq_service.check_prerequisites(req, courses_for_prereqs):
-            seen_codes.add(req)
-            course_db = db.query(models.Course).filter(models.Course.code == req).first()
-            available_courses.append({"code": req, "title": course_db.title if course_db else req})
+    for code in eligible_codes:
+        course_db = db.query(models.Course).filter(models.Course.code == code).first()
+        available_courses.append({"code": code, "title": course_db.title if course_db else code})
 
     # --- Compliance Guardrail (deterministic, runs before AI) ---
     is_compliant, compliance_warning = check_financial_aid_compliance(
