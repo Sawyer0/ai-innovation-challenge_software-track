@@ -2,5 +2,5 @@
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 pytest-cov>=4.1.0
-ruff>=0.6.0
-mypy>=1.10.0
+ruff==0.17.3  # pinned so local and CI formatting agree
+mypy==2.4.1
