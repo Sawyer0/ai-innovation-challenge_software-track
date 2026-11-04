@@ -5,25 +5,27 @@ Provides factory functions for repositories, services, and entity lookups.
 Uses generic factories to reduce boilerplate code.
 """
 
-from typing import Type, TypeVar, Callable, Optional
+from collections.abc import Callable
+from typing import Optional, Type, TypeVar
+
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..exceptions import SessionNotFoundError, CourseNotFoundError, ProgramNotFoundError
+from ..exceptions import CourseNotFoundError, ProgramNotFoundError, SessionNotFoundError
+from ..models import Course, Program, StudentSession
 from ..repositories.base import BaseRepository
-from ..repositories.session_repository import SessionRepository
 from ..repositories.course_repository import CourseRepository
 from ..repositories.program_repository import ProgramRepository
-from ..models import StudentSession, Course, Program
-from .rate_limit import rate_limit, RateLimiter, get_rate_limiter
+from ..repositories.session_repository import SessionRepository
+from .rate_limit import RateLimiter, get_rate_limiter, rate_limit
 
 # Generic type for repositories
 T = TypeVar("T")
 R = TypeVar("R", bound=BaseRepository)
 
 
-def get_repository(repo_class: Type[R]) -> Callable[[Session], R]:
+def get_repository(repo_class: type[R]) -> Callable[[Session], R]:
     """
     Create a factory function for a repository class.
 
@@ -38,8 +40,10 @@ def get_repository(repo_class: Type[R]) -> Callable[[Session], R]:
         # Usage in endpoint:
         # course_repo: CourseRepository = Depends(get_course_repo)
     """
+
     def factory(db: Session = Depends(get_db)) -> R:
         return repo_class(db)
+
     return factory
 
 
@@ -51,10 +55,7 @@ get_program_repository = get_repository(ProgramRepository)
 
 # Generic entity lookup factory
 def get_current_entity(
-    repo: BaseRepository,
-    lookup_method: str,
-    param_value: str,
-    not_found_error: Exception
+    repo: BaseRepository, lookup_method: str, param_value: str, not_found_error: Exception
 ):
     """Generic helper to fetch an entity or raise an error."""
     method = getattr(repo, lookup_method)
@@ -65,8 +66,7 @@ def get_current_entity(
 
 
 def get_current_session(
-    session_id: str,
-    repo: SessionRepository = Depends(get_session_repository)
+    session_id: str, repo: SessionRepository = Depends(get_session_repository)
 ) -> StudentSession:
     """Get current student session by ID or raise 404."""
     session = repo.get_by_session_id(session_id)
@@ -76,8 +76,7 @@ def get_current_session(
 
 
 def get_current_course(
-    course_code: str,
-    repo: CourseRepository = Depends(get_course_repository)
+    course_code: str, repo: CourseRepository = Depends(get_course_repository)
 ) -> Course:
     """Get current course by code or raise 404."""
     course = repo.get_by_code(course_code)
@@ -87,8 +86,7 @@ def get_current_course(
 
 
 def get_current_program(
-    program_code: str,
-    repo: ProgramRepository = Depends(get_program_repository)
+    program_code: str, repo: ProgramRepository = Depends(get_program_repository)
 ) -> Program:
     """Get current program by code or raise 404."""
     program = repo.get_by_code(program_code)
@@ -98,16 +96,16 @@ def get_current_program(
 
 
 # Service imports and factories
-from ..services.session_service import SessionService
-from ..services.course_service import CourseService
-from ..services.program_service import ProgramService
-from ..services.parser_service import ParserService
-from ..services.prerequisite_service import PrerequisiteService
 from ..services.ai_service import AIService
 from ..services.cleanup_service import CleanupService
+from ..services.course_service import CourseService
+from ..services.parser_service import ParserService
+from ..services.prerequisite_service import PrerequisiteService
+from ..services.program_service import ProgramService
+from ..services.session_service import SessionService
 
 
-def get_service(service_class: Type[T], *repo_deps: Callable) -> Callable[..., T]:
+def get_service(service_class: type[T], *repo_deps: Callable) -> Callable[..., T]:
     """
     Create a factory function for a service class.
 
@@ -121,13 +119,17 @@ def get_service(service_class: Type[T], *repo_deps: Callable) -> Callable[..., T
     Example:
         get_course_service = get_service(CourseService, get_course_repository)
     """
+
     def factory(*repos):
         return service_class(*repos)
+
     factory.__signature__ = None  # Will be set by FastAPI Depends
     return lambda **deps: service_class(*[deps.get(f"repo_{i}") for i in range(len(repo_deps))])
 
 
-def get_session_service(repo: SessionRepository = Depends(get_session_repository)) -> SessionService:
+def get_session_service(
+    repo: SessionRepository = Depends(get_session_repository),
+) -> SessionService:
     """Get SessionService instance."""
     return SessionService(repo)
 
@@ -137,13 +139,15 @@ def get_course_service(repo: CourseRepository = Depends(get_course_repository)) 
     return CourseService(repo)
 
 
-def get_program_service(repo: ProgramRepository = Depends(get_program_repository)) -> ProgramService:
+def get_program_service(
+    repo: ProgramRepository = Depends(get_program_repository),
+) -> ProgramService:
     """Get ProgramService instance."""
     return ProgramService(repo)
 
 
 def get_parser_service(
-    session_service: SessionService = Depends(get_session_service)
+    session_service: SessionService = Depends(get_session_service),
 ) -> ParserService:
     """Get ParserService instance."""
     return ParserService(session_service)
@@ -151,7 +155,7 @@ def get_parser_service(
 
 def get_prerequisite_service(
     program_repo: ProgramRepository = Depends(get_program_repository),
-    course_repo: CourseRepository = Depends(get_course_repository)
+    course_repo: CourseRepository = Depends(get_course_repository),
 ) -> PrerequisiteService:
     """Get PrerequisiteService instance."""
     return PrerequisiteService(program_repo, course_repo)
@@ -168,21 +172,21 @@ def get_cleanup_service(db: Session = Depends(get_db)) -> CleanupService:
 
 
 __all__ = [
-    "rate_limit",
     "RateLimiter",
+    "get_ai_service",
+    "get_cleanup_service",
+    "get_course_repository",
+    "get_course_service",
+    "get_current_course",
+    "get_current_program",
+    "get_current_session",
+    "get_parser_service",
+    "get_prerequisite_service",
+    "get_program_repository",
+    "get_program_service",
     "get_rate_limiter",
     "get_repository",
     "get_session_repository",
-    "get_course_repository",
-    "get_program_repository",
-    "get_current_session",
-    "get_current_course",
-    "get_current_program",
     "get_session_service",
-    "get_course_service",
-    "get_program_service",
-    "get_parser_service",
-    "get_prerequisite_service",
-    "get_ai_service",
-    "get_cleanup_service",
+    "rate_limit",
 ]

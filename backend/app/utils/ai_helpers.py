@@ -3,7 +3,7 @@ Utility functions for AI response handling.
 """
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 
 def clean_json_response(text: str) -> str:

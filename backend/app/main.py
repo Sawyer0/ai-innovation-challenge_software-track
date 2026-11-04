@@ -1,26 +1,36 @@
 from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .config import settings
-from .database import engine, Base, SessionLocal
 
-# Import models so they are registered with SQLAlchemy
-from . import models
+from . import models  # noqa: F401  (registers tables on Base.metadata)
+from .config import settings
+from .database import Base, SessionLocal, engine
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
 # Auto-load catalog on startup if empty, then seed policy data
 import os as _os
-from .services.catalog_loader import load_catalog as _load_catalog, load_rules as _load_rules, seed_policy_data as _seed_policy_data
+
 from sqlalchemy import text as _text
+
+from .services.catalog_loader import (
+    load_catalog as _load_catalog,
+)
+from .services.catalog_loader import (
+    load_rules as _load_rules,
+)
+from .services.catalog_loader import (
+    seed_policy_data as _seed_policy_data,
+)
 
 _db = SessionLocal()
 try:
     _course_count = _db.execute(_text("SELECT COUNT(*) FROM courses")).scalar()
     if _course_count == 0:
         _catalog_path = _os.path.join(_os.path.dirname(__file__), "../../data/bmcc-catalog.json")
-        _rules_path   = _os.path.join(_os.path.dirname(__file__), "../../data/rules.json")
+        _rules_path = _os.path.join(_os.path.dirname(__file__), "../../data/rules.json")
         if _os.path.exists(_catalog_path):
             print("Catalog empty — loading from bmcc-catalog.json...")
             _load_catalog(_catalog_path)
@@ -43,6 +53,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to BMCC AI-Powered Backend"}
@@ -52,7 +63,7 @@ def read_root():
 def health_check():
     """
     Health check endpoint.
-    
+
     Returns:
         Status of database connectivity and AI API.
     """
@@ -60,36 +71,37 @@ def health_check():
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "database": "unknown",
-        "ai_api": "unknown"
+        "ai_api": "unknown",
     }
-    
+
     # Check database
     try:
         from sqlalchemy import text
+
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
             conn.commit()
         status["database"] = "connected"
     except Exception as e:
-        status["database"] = f"error: {str(e)}"
+        status["database"] = f"error: {e!s}"
         status["status"] = "degraded"
-    
+
     # Check AI API
     try:
         client = get_ai_client()
         # Just verify client is initialized
         status["ai_api"] = "available"
     except AIError as e:
-        status["ai_api"] = f"error: {str(e)}"
+        status["ai_api"] = f"error: {e!s}"
         status["status"] = "degraded"
     except Exception as e:
-        status["ai_api"] = f"error: {str(e)}"
+        status["ai_api"] = f"error: {e!s}"
         status["status"] = "degraded"
-    
+
     return status
 
 
-from .routers import courses, programs, sessions, upload, transcript, advisement
+from .routers import advisement, courses, programs, sessions, transcript, upload
 
 app.include_router(courses.router)
 app.include_router(programs.router)

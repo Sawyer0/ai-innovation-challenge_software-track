@@ -1,38 +1,48 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from typing import List
-from .. import schemas, models
-from ..dependencies import get_current_session, get_prerequisite_service, get_ai_service, get_db
+
+from .. import models, schemas
+from ..dependencies import get_ai_service, get_current_session, get_db, get_prerequisite_service
 from ..dependencies.rate_limit import rate_limit
-from ..services.prerequisite_service import PrerequisiteService
 from ..services.ai_service import AIService
-from ..utils import check_financial_aid_compliance, check_visa_compliance, calculate_pell_proration, check_tap_elective_compliance
+from ..services.prerequisite_service import PrerequisiteService
+from ..utils import (
+    calculate_pell_proration,
+    check_financial_aid_compliance,
+    check_tap_elective_compliance,
+    check_visa_compliance,
+)
 
 router = APIRouter(prefix="/api/session", tags=["advisement"])
+
 
 @router.get("/{session_id}/advisement/eligible")
 def get_eligible_courses(
     session: models.StudentSession = Depends(get_current_session),
-    prereq_service: PrerequisiteService = Depends(get_prerequisite_service)
+    prereq_service: PrerequisiteService = Depends(get_prerequisite_service),
 ):
     try:
         profile = session.profile
         if not profile or not profile.program_code:
             raise HTTPException(status_code=400, detail="Student profile or program code not set")
-            
+
         completed_courses = [c.course_code for c in session.courses if c.status == "completed"]
-        remaining_reqs = prereq_service.get_remaining_requirements(profile.program_code, completed_courses)
-        
+        remaining_reqs = prereq_service.get_remaining_requirements(
+            profile.program_code, completed_courses
+        )
+
         eligible = []
         for req in remaining_reqs:
             if prereq_service.check_prerequisites(req, completed_courses):
                 eligible.append(req)
-                
+
         return {"eligible_courses": eligible}
-    except Exception as e:
+    except Exception:
         import traceback
+
         error_msg = traceback.format_exc()
         raise HTTPException(status_code=500, detail=error_msg)
+
 
 @router.post("/{session_id}/advisement", response_model=schemas.AdvisementResponse)
 async def advisement(
@@ -42,7 +52,7 @@ async def advisement(
     prereq_service: PrerequisiteService = Depends(get_prerequisite_service),
     ai_service: AIService = Depends(get_ai_service),
     db: Session = Depends(get_db),
-    _: None = Depends(rate_limit)
+    _: None = Depends(rate_limit),
 ):
     profile = session.profile
     if not profile:
@@ -64,7 +74,11 @@ async def advisement(
     courses_for_prereqs = list(set(completed_courses + in_progress_courses))
 
     # Get remaining requirements and check eligibility
-    remaining_reqs = prereq_service.get_remaining_requirements(profile.program_code, courses_for_prereqs) if profile.program_code else []
+    remaining_reqs = (
+        prereq_service.get_remaining_requirements(profile.program_code, courses_for_prereqs)
+        if profile.program_code
+        else []
+    )
 
     # Get full course details from database for available courses
     seen_codes: set[str] = set()
@@ -75,10 +89,7 @@ async def advisement(
         if prereq_service.check_prerequisites(req, courses_for_prereqs):
             seen_codes.add(req)
             course_db = db.query(models.Course).filter(models.Course.code == req).first()
-            available_courses.append({
-                "code": req,
-                "title": course_db.title if course_db else req
-            })
+            available_courses.append({"code": req, "title": course_db.title if course_db else req})
 
     # --- Compliance Guardrail (deterministic, runs before AI) ---
     is_compliant, compliance_warning = check_financial_aid_compliance(
@@ -119,15 +130,23 @@ async def advisement(
     # Build compliance context for the AI — tell it what credit load is required
     warnings = []
     if profile.financial_aid_type in ("pell",):
-        warnings.append("Pell Grant: recommend at least 6 credits (half-time) to receive any award, 12 credits (full-time) for the full award.")
+        warnings.append(
+            "Pell Grant: recommend at least 6 credits (half-time) to receive any award, 12 credits (full-time) for the full award."
+        )
     if profile.financial_aid_type in ("tap", "both"):
-        warnings.append("TAP: must recommend exactly 12+ credits of degree-applicable courses (full-time required).")
+        warnings.append(
+            "TAP: must recommend exactly 12+ credits of degree-applicable courses (full-time required)."
+        )
     if profile.financial_aid_type == "both":
         warnings.append("Pell Grant: 12 credits = 100% award; fewer credits = prorated award.")
     if profile.student_type == "international":
-        warnings.append("F-1 visa: must recommend at least 12 credits with no more than 1 online/hybrid course.")
+        warnings.append(
+            "F-1 visa: must recommend at least 12 credits with no more than 1 online/hybrid course."
+        )
     if not warnings:
-        warnings.append("No financial aid or visa constraints — recommend a standard full-time load (12–15 credits).")
+        warnings.append(
+            "No financial aid or visa constraints — recommend a standard full-time load (12–15 credits)."
+        )
 
     response = await ai_service.generate_advisement(
         profile=profile,

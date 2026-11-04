@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
-from ..models import StudentSession, StudentProfile, StudentCourse
+
+from ..models import StudentCourse, StudentProfile, StudentSession
 from .base import BaseRepository
 
 
@@ -40,10 +41,13 @@ class SessionRepository(BaseRepository[StudentSession]):
 
     def get_course(self, session_id: str, course_code: str) -> StudentCourse:
         """Get a specific student course by session and course code."""
-        return self.db.query(StudentCourse).filter(
-            StudentCourse.session_id == session_id,
-            StudentCourse.course_code == course_code
-        ).first()
+        return (
+            self.db.query(StudentCourse)
+            .filter(
+                StudentCourse.session_id == session_id, StudentCourse.course_code == course_code
+            )
+            .first()
+        )
 
     def add_course(self, session_id: str, course_data: dict) -> StudentCourse:
         """Add a course to a student session."""
@@ -54,7 +58,7 @@ class SessionRepository(BaseRepository[StudentSession]):
             status=course_data.get("status"),
             grade=course_data.get("grade"),
             credits=course_data.get("credits"),
-            source=course_data.get("source", "manual")
+            source=course_data.get("source", "manual"),
         )
         self.db.add(student_course)
         self.db.commit()

@@ -1,6 +1,6 @@
-from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from typing import List, Optional
+from sqlalchemy.orm import Session
+
 from ..models import Course
 from .base import BaseRepository
 
@@ -11,11 +11,13 @@ class CourseRepository(BaseRepository[Course]):
     def __init__(self, db: Session):
         super().__init__(db, Course)
 
-    def get_by_code(self, code: str) -> Optional[Course]:
+    def get_by_code(self, code: str) -> Course | None:
         """Get course by its code."""
         return self.get_by_field("code", code)
 
-    def list_paginated(self, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> List[Course]:
+    def list_paginated(
+        self, skip: int = 0, limit: int = 100, search: str | None = None
+    ) -> list[Course]:
         """List courses with optional search filtering."""
         query = self.db.query(Course)
         if search:
@@ -24,7 +26,7 @@ class CourseRepository(BaseRepository[Course]):
                 or_(
                     Course.code.ilike(search_term),
                     Course.title.ilike(search_term),
-                    Course.department.ilike(search_term)
+                    Course.department.ilike(search_term),
                 )
             )
         return query.offset(skip).limit(limit).all()
