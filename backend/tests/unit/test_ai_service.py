@@ -1,5 +1,5 @@
 """
-Unit tests for AIService: prompt building, Claude-to-Gemini fallback and
+Unit tests for AIService: prompt building, provider fallback and
 response parsing. Providers are the fakes from conftest; nothing leaves the box.
 """
 
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.infrastructure.ai import strip_code_fences
+from app.infrastructure.ai import NoProviderConfiguredError, strip_code_fences
 from app.schemas import AdvisementResponse
 from app.services.ai_service import AdvisementGenerationError, AIService
 
@@ -51,8 +51,8 @@ async def _advise(service: AIService, profile, **overrides) -> AdvisementRespons
 
 @pytest.mark.unit
 class TestGenerateAdvisement:
-    async def test_returns_structured_plan_from_claude(self, mock_profile, ai_providers):
-        ai_providers.claude.queue(PLAN)
+    async def test_returns_structured_plan_from_first_provider(self, mock_profile, ai_providers):
+        ai_providers.primary.queue(PLAN)
 
         result = await _advise(AIService(), mock_profile)
 
@@ -60,14 +60,14 @@ class TestGenerateAdvisement:
         assert result.compliance_cleared is True
         assert [c.course_code for c in result.recommended_courses] == ["MAT 206"]
         assert result.recommended_courses[0].credits == 4.0
-        assert ai_providers.gemini.calls == []
+        assert ai_providers.fallback.calls == []
 
     async def test_prompt_includes_student_context(self, mock_profile, ai_providers):
-        ai_providers.claude.queue(PLAN)
+        ai_providers.primary.queue(PLAN)
 
         await _advise(AIService(), mock_profile)
 
-        prompt = ai_providers.claude.calls[0]["messages"][0]["content"]
+        prompt = ai_providers.primary.calls[0]["prompt"]
         for expected in (
             "MAT 157, ENG 101",
             "CSC 101",
@@ -81,7 +81,7 @@ class TestGenerateAdvisement:
             assert expected in prompt
 
     async def test_empty_history_and_default_message(self, mock_profile, ai_providers):
-        ai_providers.claude.queue(PLAN)
+        ai_providers.primary.queue(PLAN)
 
         await _advise(
             AIService(),
@@ -92,42 +92,51 @@ class TestGenerateAdvisement:
             student_message=None,
         )
 
-        prompt = ai_providers.claude.calls[0]["messages"][0]["content"]
+        prompt = ai_providers.primary.calls[0]["prompt"]
         assert "None" in prompt
         assert "All compliance checks passed." in prompt
         assert "What should I take next?" in prompt
 
-    async def test_falls_back_to_gemini_when_claude_fails(self, mock_profile, ai_providers):
-        ai_providers.gemini.queue("```json\n" + json.dumps(PLAN) + "\n```")
+    async def test_falls_back_when_first_provider_fails(self, mock_profile, ai_providers):
+        ai_providers.fallback.queue("```json\n" + json.dumps(PLAN) + "\n```")
 
         result = await _advise(AIService(), mock_profile)
 
-        assert len(ai_providers.claude.calls) == 1
-        assert len(ai_providers.gemini.calls) == 1
+        assert len(ai_providers.primary.calls) == 1
+        assert len(ai_providers.fallback.calls) == 1
         assert result.recommended_courses[0].course_code == "MAT 206"
 
-    async def test_falls_back_when_claude_reply_is_malformed(self, mock_profile, ai_providers):
-        ai_providers.claude.queue({"recommended_courses": [{"course_code": "MAT 206"}]})
-        ai_providers.gemini.queue(PLAN)
+    async def test_falls_back_when_first_reply_is_malformed(self, mock_profile, ai_providers):
+        ai_providers.primary.queue({"recommended_courses": [{"course_code": "MAT 206"}]})
+        ai_providers.fallback.queue(PLAN)
 
         result = await _advise(AIService(), mock_profile)
 
         assert result.recommended_courses[0].course_title == "Precalculus"
 
-    async def test_raises_when_both_providers_fail(self, mock_profile, ai_providers):
-        ai_providers.claude.queue("not json")
-        ai_providers.gemini.queue("still not json")
+    async def test_raises_when_every_provider_fails(self, mock_profile, ai_providers):
+        ai_providers.primary.queue("not json")
+        ai_providers.fallback.queue("still not json")
 
         with pytest.raises(AdvisementGenerationError):
             await _advise(AIService(), mock_profile)
 
-    async def test_uses_configured_models(self, mock_profile, ai_providers):
-        from app.config import settings
+    async def test_sends_advisement_system_prompt(self, mock_profile, ai_providers):
+        from app.prompts import ADVISEMENT_SYSTEM_PROMPT
 
-        ai_providers.claude.queue(PLAN)
+        ai_providers.primary.queue(PLAN)
         await _advise(AIService(), mock_profile)
 
-        assert ai_providers.claude.calls[0]["model"] == settings.CLAUDE_MODEL
+        assert ai_providers.primary.calls[0]["system"] == ADVISEMENT_SYSTEM_PROMPT
+
+    async def test_missing_keys_raise_a_clear_error(self, mock_profile, monkeypatch):
+        def no_providers():
+            raise NoProviderConfiguredError()
+
+        monkeypatch.setattr("app.services.ai_service.get_providers", no_providers)
+
+        with pytest.raises(NoProviderConfiguredError, match="GROQ_API_KEY"):
+            await _advise(AIService(), mock_profile)
 
 
 @pytest.mark.unit

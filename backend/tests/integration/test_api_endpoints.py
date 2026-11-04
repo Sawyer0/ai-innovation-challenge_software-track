@@ -11,6 +11,7 @@ from typing import Any, ClassVar
 import pytest
 
 from app import models
+from app.infrastructure.ai import NoProviderConfiguredError
 
 
 @pytest.mark.integration
@@ -275,7 +276,7 @@ class TestAdvisementEndpoints:
 
     def test_advisement_endpoint(self, client, db, ai_providers):
         _seed_mat_sequence(db)
-        ai_providers.claude.queue(_plan(("MAT 206", 4)))
+        ai_providers.primary.queue(_plan(("MAT 206", 4)))
         session_id = _session_with_profile(client)
         client.post(
             f"/api/session/{session_id}/courses",
@@ -292,7 +293,7 @@ class TestAdvisementEndpoints:
         assert [c["course_code"] for c in data["recommended_courses"]] == ["MAT 206"]
         assert data["total_planned_credits"] == 4.0
         assert "Always confirm" in data["disclaimer"]
-        assert "- MAT 206: Precalculus" in ai_providers.claude.calls[0]["messages"][0]["content"]
+        assert "- MAT 206: Precalculus" in ai_providers.primary.calls[0]["prompt"]
 
     def test_advisement_returns_502_when_ai_is_unavailable(self, client):
         session_id = _session_with_profile(client)
@@ -300,6 +301,18 @@ class TestAdvisementEndpoints:
         response = client.post(f"/api/session/{session_id}/advisement", json={"message": "Help?"})
 
         assert response.status_code == 502
+
+    def test_advisement_returns_503_without_any_api_key(self, client, monkeypatch):
+        def no_providers():
+            raise NoProviderConfiguredError()
+
+        monkeypatch.setattr("app.services.ai_service.get_providers", no_providers)
+        session_id = _session_with_profile(client)
+
+        response = client.post(f"/api/session/{session_id}/advisement", json={"message": "?"})
+
+        assert response.status_code == 503
+        assert "GROQ_API_KEY" in response.json()["detail"]
 
     def test_advisement_requires_profile(self, client):
         session_id = client.post("/api/session").json()["session_id"]
@@ -329,7 +342,7 @@ class TestComplianceGuardrails:
 
         assert response.status_code == 422
         assert response.json()["detail"]["type"] == "compliance_violation"
-        assert ai_providers.claude.calls == []
+        assert ai_providers.primary.calls == []
 
     def test_f1_student_below_full_time_is_blocked(self, client, ai_providers):
         session_id = _session_with_profile(client, student_type="international")
@@ -341,7 +354,7 @@ class TestComplianceGuardrails:
         detail = response.json()["detail"]
         assert detail["type"] == "visa_compliance_violation"
         assert "12 credits" in detail["message"]
-        assert ai_providers.claude.calls == []
+        assert ai_providers.primary.calls == []
 
     def test_f1_student_with_two_online_courses_is_blocked(self, client, db):
         db.add_all(
@@ -362,7 +375,7 @@ class TestComplianceGuardrails:
         assert "online or hybrid" in response.json()["detail"]["message"]
 
     def test_pell_proration_reflects_recommended_credits(self, client, ai_providers):
-        ai_providers.claude.queue(_plan(("ENG 101", 3), ("MAT 157", 4), ("CSC 101", 2)))
+        ai_providers.primary.queue(_plan(("ENG 101", 3), ("MAT 157", 4), ("CSC 101", 2)))
         session_id = _session_with_profile(client, financial_aid_type="pell")
 
         response = client.post(f"/api/session/{session_id}/advisement", json={"message": "?"})
@@ -393,7 +406,7 @@ class TestTranscriptEndpoints:
     }
 
     def test_upload_parses_without_saving(self, client, ai_providers):
-        ai_providers.claude.queue(self.TRANSCRIPT)
+        ai_providers.primary.queue(self.TRANSCRIPT)
         session_id = client.post("/api/session").json()["session_id"]
 
         response = client.post(
@@ -428,7 +441,7 @@ class TestTranscriptEndpoints:
         )
 
         assert response.status_code == 400
-        assert ai_providers.claude.calls == []
+        assert ai_providers.primary.calls == []
 
     def test_upload_returns_502_when_both_providers_fail(self, client):
         session_id = client.post("/api/session").json()["session_id"]

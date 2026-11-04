@@ -5,6 +5,7 @@ Upload endpoint — parses transcripts and DegreeWorks files.
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from ..dependencies import get_current_session, get_parser_service
+from ..infrastructure.ai import NoProviderConfiguredError
 from ..models import StudentSession
 from ..parsers.transcript_parser import TranscriptParsingError
 from ..services.parser_service import ParserService
@@ -28,6 +29,8 @@ async def upload_file(
             session_id=session.session_id,
         )
         return result
+    except NoProviderConfiguredError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except TranscriptParsingError as e:

@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -11,13 +12,18 @@ from sqlalchemy import text
 
 from .config import settings
 from .database import engine
+from .infrastructure.ai import MISSING_KEY_MESSAGE
 from .routers import advisement, courses, programs, sessions, transcript, upload
 from .services.catalog_loader import initialize_database
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     initialize_database()
+    if not settings.has_any_ai_key:
+        logger.warning(MISSING_KEY_MESSAGE)
     yield
 
 
@@ -47,6 +53,7 @@ def health_check() -> dict[str, Any]:
         "ai_providers": {
             "claude": settings.has_anthropic_key,
             "gemini": settings.has_gemini_key,
+            "groq": settings.has_groq_key,
         },
     }
 
@@ -58,8 +65,9 @@ def health_check() -> dict[str, Any]:
         status["database"] = f"error: {e}"
         status["status"] = "degraded"
 
-    if not (settings.has_anthropic_key or settings.has_gemini_key):
+    if not settings.has_any_ai_key:
         status["status"] = "degraded"
+        status["ai_error"] = MISSING_KEY_MESSAGE
 
     return status
 

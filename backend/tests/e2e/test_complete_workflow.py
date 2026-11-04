@@ -87,7 +87,7 @@ def csc_program(db):
 @pytest.mark.slow
 class TestCompleteStudentWorkflow:
     def test_transcript_to_personalized_plan(self, client, csc_program, ai_providers):
-        ai_providers.claude.queue(TRANSCRIPT, PLAN)
+        ai_providers.primary.queue(TRANSCRIPT, PLAN)
 
         session_id = client.post("/api/session").json()["session_id"]
 
@@ -126,7 +126,7 @@ class TestCompleteStudentWorkflow:
         assert plan["total_planned_credits"] == 12.0
         assert plan["pell_proration"]["percentage_display"] == "100%"
 
-        advisement_prompt = ai_providers.claude.calls[1]["messages"][0]["content"]
+        advisement_prompt = ai_providers.primary.calls[1]["prompt"]
         assert "MAT 157, ENG 101" in advisement_prompt or "ENG 101, MAT 157" in advisement_prompt
         assert "robotics engineer" in advisement_prompt
 
@@ -135,7 +135,7 @@ class TestCompleteStudentWorkflow:
         assert len(session["courses"]) == 2
 
     def test_student_can_manually_add_courses(self, client, csc_program, ai_providers):
-        ai_providers.claude.queue(PLAN)
+        ai_providers.primary.queue(PLAN)
         session_id = client.post("/api/session").json()["session_id"]
         client.post(
             f"/api/session/{session_id}/profile",
@@ -156,7 +156,7 @@ class TestCompleteStudentWorkflow:
         assert len(resp.json()["recommended_courses"]) == 4
 
     def test_tap_student_gets_elective_warning(self, client, csc_program, ai_providers):
-        ai_providers.claude.queue(PLAN)
+        ai_providers.primary.queue(PLAN)
         session_id = client.post("/api/session").json()["session_id"]
         client.post(
             f"/api/session/{session_id}/profile",

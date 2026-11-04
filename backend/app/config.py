@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_PLACEHOLDER_KEYS = {"", "sk-placeholder", "sk-ant-...", "..."}
+_PLACEHOLDER_KEYS = {"", "sk-placeholder", "sk-ant-...", "gsk_...", "..."}
 
 
 class Settings(BaseSettings):
@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
     ANTHROPIC_API_KEY: str = "sk-placeholder"
     CLAUDE_MODEL: str = "claude-sonnet-4-6"
+    # Groq: free-tier, OpenAI-compatible fallback (https://console.groq.com/docs/models)
+    GROQ_API_KEY: str = ""
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+    GROQ_VISION_MODEL: str = "qwen/qwen3.8-27b"
     APP_ENV: str = "development"
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
@@ -21,6 +26,14 @@ class Settings(BaseSettings):
     @property
     def has_gemini_key(self) -> bool:
         return self.GEMINI_API_KEY not in _PLACEHOLDER_KEYS
+
+    @property
+    def has_groq_key(self) -> bool:
+        return self.GROQ_API_KEY not in _PLACEHOLDER_KEYS
+
+    @property
+    def has_any_ai_key(self) -> bool:
+        return self.has_anthropic_key or self.has_gemini_key or self.has_groq_key
 
 
 settings = Settings()

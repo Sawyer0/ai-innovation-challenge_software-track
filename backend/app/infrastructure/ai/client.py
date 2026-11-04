@@ -1,6 +1,5 @@
-"""Shared clients for the AI providers (Claude primary, Gemini fallback)."""
+"""SDK clients for Claude and Gemini, created once per process."""
 
-import asyncio
 from functools import cache
 from typing import Any
 
@@ -18,29 +17,6 @@ def get_claude_client() -> anthropic.Anthropic:
 @cache
 def get_gemini_client() -> genai.Client:
     return genai.Client(api_key=settings.GEMINI_API_KEY)
-
-
-async def claude_complete(system: str, content: Any, max_tokens: int) -> str:
-    """Send one user turn to Claude in a worker thread and return its text."""
-    client = get_claude_client()
-    message = await asyncio.to_thread(
-        lambda: client.messages.create(
-            model=settings.CLAUDE_MODEL,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": content}],
-        )
-    )
-    return "".join(getattr(block, "text", "") for block in message.content)
-
-
-async def gemini_complete(contents: list[Any]) -> str:
-    """Ask Gemini in a worker thread and return its text."""
-    client = get_gemini_client()
-    response = await asyncio.to_thread(
-        lambda: client.models.generate_content(model=settings.GEMINI_MODEL, contents=contents)
-    )
-    return response.text or ""
 
 
 class AIClient:
