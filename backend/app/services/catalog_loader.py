@@ -1,6 +1,7 @@
 import json
 import os
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
@@ -175,6 +176,26 @@ _FINANCIAL_AID_CONSTRAINTS = [
         allow_exception_process=True,
     ),
 ]
+
+
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+
+
+def initialize_database() -> None:
+    """Create tables, load the bundled catalog on first run, and seed policy data."""
+    Base.metadata.create_all(bind=engine)
+
+    db = SessionLocal()
+    try:
+        catalog_path = DATA_DIR / "bmcc-catalog.json"
+        if db.query(Course).count() == 0 and catalog_path.exists():
+            load_catalog(str(catalog_path))
+            rules_path = DATA_DIR / "rules.json"
+            if rules_path.exists():
+                load_rules(str(rules_path))
+        seed_policy_data(db)
+    finally:
+        db.close()
 
 
 def seed_policy_data(db: Session) -> None:
