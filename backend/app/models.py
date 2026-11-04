@@ -1,16 +1,9 @@
-from sqlalchemy import (
-    JSON,
-    Boolean,
-    Column,
-    DateTime,
-    ForeignKey,
-    Integer,
-    Numeric,
-    String,
-    Text,
-    func,
-)
-from sqlalchemy.orm import relationship
+from datetime import datetime
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
 
@@ -18,177 +11,203 @@ from .database import Base
 class Course(Base):
     __tablename__ = "courses"
 
-    id = Column(Integer, primary_key=True, index=True)
-    code = Column(String(20), unique=True, index=True, nullable=False)
-    title = Column(String(255), nullable=False)
-    long_name = Column(String(255))
-    description = Column(Text)
-    credits = Column(Numeric(4, 2))
-    subject = Column(String(50))
-    department = Column(String(100))
-    hegis_code = Column(String(20))
-    typically_offered = Column(String(100))
-    instruction_mode = Column(String(50))  # "In Person", "Online", "Hybrid"
-    raw_data = Column(JSON)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    long_name: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    credits: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))
+    subject: Mapped[str | None] = mapped_column(String(50))
+    department: Mapped[str | None] = mapped_column(String(100))
+    hegis_code: Mapped[str | None] = mapped_column(String(20))
+    typically_offered: Mapped[str | None] = mapped_column(String(100))
+    instruction_mode: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # "In Person", "Online", "Hybrid"
+    raw_data: Mapped[Any | None] = mapped_column(JSON)
 
-    prerequisites = relationship("CoursePrerequisite", back_populates="course")
+    prerequisites: Mapped[list["CoursePrerequisite"]] = relationship(back_populates="course")
 
 
 class CoursePrerequisite(Base):
     __tablename__ = "course_prerequisites"
 
-    id = Column(Integer, primary_key=True, index=True)
-    course_id = Column(Integer, ForeignKey("courses.id"))
-    prerequisite_course_code = Column(String(20))
-    is_corequisite = Column(Boolean, default=False)
-    logic_group = Column(Integer, default=1)
-    notes = Column(Text)
-    minimum_grade = Column(String(2), default="C")  # "C" or better required by default
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    course_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("courses.id"))
+    prerequisite_course_code: Mapped[str | None] = mapped_column(String(20))
+    is_corequisite: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    logic_group: Mapped[int | None] = mapped_column(Integer, default=1)
+    notes: Mapped[str | None] = mapped_column(Text)
+    minimum_grade: Mapped[str | None] = mapped_column(
+        String(2), default="C"
+    )  # "C" or better required by default
 
     # New indexing columns for non-course attributes
-    is_attribute = Column(Boolean, default=False)
-    attribute_name = Column(String(50))
-    attribute_value = Column(String(50))
+    is_attribute: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    attribute_name: Mapped[str | None] = mapped_column(String(50))
+    attribute_value: Mapped[str | None] = mapped_column(String(50))
 
-    course = relationship("Course", back_populates="prerequisites")
+    course: Mapped["Course | None"] = relationship(back_populates="prerequisites")
 
 
 class Program(Base):
     __tablename__ = "programs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    program_code = Column(String(50), unique=True, index=True, nullable=False)
-    name = Column(String(255), nullable=False)
-    long_name = Column(String(255))
-    description = Column(Text)
-    degree = Column(String(50))
-    department = Column(String(100))
-    hegis_code = Column(String(20))
-    raw_data = Column(JSON)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    program_code: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    long_name: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    degree: Mapped[str | None] = mapped_column(String(50))
+    department: Mapped[str | None] = mapped_column(String(100))
+    hegis_code: Mapped[str | None] = mapped_column(String(20))
+    raw_data: Mapped[Any | None] = mapped_column(JSON)
 
-    requirements = relationship("ProgramRequirement", back_populates="program")
+    requirements: Mapped[list["ProgramRequirement"]] = relationship(back_populates="program")
 
 
 class ProgramRequirement(Base):
     __tablename__ = "program_requirements"
 
-    id = Column(Integer, primary_key=True, index=True)
-    program_id = Column(Integer, ForeignKey("programs.id"))
-    course_code = Column(String(20))
-    semester_year = Column(String(20))
-    semester_term = Column(String(20))
-    is_required = Column(Boolean, default=True)
-    elective_group = Column(String(50))
-    min_credits = Column(Numeric(4, 2))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    program_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("programs.id"))
+    course_code: Mapped[str | None] = mapped_column(String(20))
+    semester_year: Mapped[str | None] = mapped_column(String(20))
+    semester_term: Mapped[str | None] = mapped_column(String(20))
+    is_required: Mapped[bool | None] = mapped_column(Boolean, default=True)
+    elective_group: Mapped[str | None] = mapped_column(String(50))
+    min_credits: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))
 
     # New indexing columns for wildcard patterns (e.g., "ART *")
-    is_wildcard = Column(Boolean, default=False)
-    wildcard_subject = Column(String(20))
-    wildcard_level = Column(String(10))
+    is_wildcard: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    wildcard_subject: Mapped[str | None] = mapped_column(String(20))
+    wildcard_level: Mapped[str | None] = mapped_column(String(10))
 
-    program = relationship("Program", back_populates="requirements")
+    program: Mapped["Program | None"] = relationship(back_populates="requirements")
 
 
 class StudentSession(Base):
     __tablename__ = "student_sessions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String(64), unique=True, index=True, nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    last_activity = Column(DateTime, default=func.now(), onupdate=func.now())
-    expires_at = Column(DateTime, nullable=True)  # 30-day session expiry
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+    last_activity: Mapped[datetime | None] = mapped_column(
+        DateTime, default=func.now(), onupdate=func.now()
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )  # 30-day session expiry
 
-    profile = relationship("StudentProfile", back_populates="session", uselist=False)
-    courses = relationship("StudentCourse", back_populates="session")
-    exceptions = relationship("PolicyException", back_populates="session")
+    profile: Mapped["StudentProfile | None"] = relationship(back_populates="session")
+    courses: Mapped[list["StudentCourse"]] = relationship(back_populates="session")
+    exceptions: Mapped[list["PolicyException"]] = relationship(back_populates="session")
 
 
 class StudentProfile(Base):
     __tablename__ = "student_profiles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String(64), ForeignKey("student_sessions.session_id"))
-    school = Column(String(100))
-    program_code = Column(String(50))
-    enrollment_status = Column(String(50))  # Full-time, Part-time
-    student_type = Column(String(50))  # Continuing, Transfer, International
-    classification = Column(String(50))  # Freshman, Sophomore, Junior, Senior
-    academic_standing = Column(String(50))  # Good Standing, Probation, Dismissed
-    financial_aid_type = Column(String(50))
-    graduation_year = Column(Integer)
-    graduation_semester = Column(String(20))
-    career_goal = Column(Text)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("student_sessions.session_id")
+    )
+    school: Mapped[str | None] = mapped_column(String(100))
+    program_code: Mapped[str | None] = mapped_column(String(50))
+    enrollment_status: Mapped[str | None] = mapped_column(String(50))  # Full-time, Part-time
+    student_type: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # Continuing, Transfer, International
+    classification: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # Freshman, Sophomore, Junior, Senior
+    academic_standing: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # Good Standing, Probation, Dismissed
+    financial_aid_type: Mapped[str | None] = mapped_column(String(50))
+    graduation_year: Mapped[int | None] = mapped_column(Integer)
+    graduation_semester: Mapped[str | None] = mapped_column(String(20))
+    career_goal: Mapped[str | None] = mapped_column(Text)
 
-    session = relationship("StudentSession", back_populates="profile")
+    session: Mapped["StudentSession | None"] = relationship(back_populates="profile")
 
 
 class StudentCourse(Base):
     __tablename__ = "student_courses"
 
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String(64), ForeignKey("student_sessions.session_id"))
-    course_code = Column(String(20))
-    semester_taken = Column(String(20))
-    status = Column(String(20))
-    grade = Column(String(5))
-    credits = Column(Numeric(4, 2))
-    source = Column(String(50))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("student_sessions.session_id")
+    )
+    course_code: Mapped[str | None] = mapped_column(String(20))
+    semester_taken: Mapped[str | None] = mapped_column(String(20))
+    status: Mapped[str | None] = mapped_column(String(20))
+    grade: Mapped[str | None] = mapped_column(String(5))
+    credits: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))
+    source: Mapped[str | None] = mapped_column(String(50))
 
-    session = relationship("StudentSession", back_populates="courses")
+    session: Mapped["StudentSession | None"] = relationship(back_populates="courses")
 
 
 class EnrollmentStatusRule(Base):
     __tablename__ = "enrollment_status_rules"
 
-    id = Column(Integer, primary_key=True, index=True)
-    status_name = Column(String(50), nullable=False)
-    min_credits = Column(Numeric(4, 2), nullable=False)
-    max_credits = Column(Numeric(4, 2))
-    description = Column(Text)
-    is_default = Column(Boolean, default=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    status_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    min_credits: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    max_credits: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))
+    description: Mapped[str | None] = mapped_column(Text)
+    is_default: Mapped[bool | None] = mapped_column(Boolean, default=False)
 
 
 class FinancialAidConstraint(Base):
     __tablename__ = "financial_aid_constraints"
 
-    id = Column(Integer, primary_key=True, index=True)
-    aid_type = Column(String(50), nullable=False)
-    min_credits_required = Column(Numeric(4, 2))
-    min_status_required = Column(String(50))
-    warning_message = Column(Text)
-    block_underload = Column(Boolean, default=False)
-    allow_exception_process = Column(Boolean, default=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    aid_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    min_credits_required: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))
+    min_status_required: Mapped[str | None] = mapped_column(String(50))
+    warning_message: Mapped[str | None] = mapped_column(Text)
+    block_underload: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    allow_exception_process: Mapped[bool | None] = mapped_column(Boolean, default=False)
 
 
 class AcademicPolicy(Base):
     __tablename__ = "academic_policies"
 
-    id = Column(Integer, primary_key=True, index=True)
-    policy_type = Column(String(50), nullable=False)
-    policy_code = Column(String(50))
-    description = Column(Text, nullable=False)
-    rule_logic = Column(JSON)
-    applies_to_student_types = Column(JSON)  # entry types: Continuing, Transfer, etc.
-    applies_to_classifications = Column(JSON)  # freshman, sophomore, etc.
-    applies_to_academic_standings = Column(JSON)  # Good Standing, Probation, etc.
-    applies_to_programs = Column(JSON)
-    priority = Column(Integer, default=100)
-    is_active = Column(Boolean, default=True)
-    is_hardcoded = Column(Boolean, default=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    policy_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    policy_code: Mapped[str | None] = mapped_column(String(50))
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    rule_logic: Mapped[Any | None] = mapped_column(JSON)
+    applies_to_student_types: Mapped[Any | None] = mapped_column(
+        JSON
+    )  # entry types: Continuing, Transfer, etc.
+    applies_to_classifications: Mapped[Any | None] = mapped_column(
+        JSON
+    )  # freshman, sophomore, etc.
+    applies_to_academic_standings: Mapped[Any | None] = mapped_column(
+        JSON
+    )  # Good Standing, Probation, etc.
+    applies_to_programs: Mapped[Any | None] = mapped_column(JSON)
+    priority: Mapped[int | None] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
+    is_hardcoded: Mapped[bool | None] = mapped_column(Boolean, default=False)
 
-    exceptions = relationship("PolicyException", back_populates="policy")
+    exceptions: Mapped[list["PolicyException"]] = relationship(back_populates="policy")
 
 
 class PolicyException(Base):
     __tablename__ = "policy_exceptions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String(64), ForeignKey("student_sessions.session_id"))
-    policy_id = Column(Integer, ForeignKey("academic_policies.id"))
-    reason = Column(Text)
-    approved_by = Column(String(100))
-    expires_at = Column(DateTime)
-    is_active = Column(Boolean, default=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("student_sessions.session_id")
+    )
+    policy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("academic_policies.id"))
+    reason: Mapped[str | None] = mapped_column(Text)
+    approved_by: Mapped[str | None] = mapped_column(String(100))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime)
+    is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
 
-    session = relationship("StudentSession", back_populates="exceptions")
-    policy = relationship("AcademicPolicy", back_populates="exceptions")
+    session: Mapped["StudentSession | None"] = relationship(back_populates="exceptions")
+    policy: Mapped["AcademicPolicy | None"] = relationship(back_populates="exceptions")
