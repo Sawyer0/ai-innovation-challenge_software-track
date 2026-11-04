@@ -10,7 +10,7 @@ class ProgramRepository(BaseRepository[Program]):
     def __init__(self, db: Session):
         super().__init__(db, Program)
 
-    def get_by_code(self, code: str) -> Program:
+    def get_by_code(self, code: str) -> Program | None:
         """Get program by its program code."""
         return self.get_by_field("program_code", code)
 

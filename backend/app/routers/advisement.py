@@ -20,7 +20,11 @@ router = APIRouter(prefix="/api/session", tags=["advisement"])
 def _satisfied_course_codes(session: models.StudentSession) -> list[str]:
     """Completed and in-progress courses both count toward prerequisites."""
     return sorted(
-        {c.course_code for c in session.courses if c.status in ("completed", "in-progress")}
+        {
+            c.course_code
+            for c in session.courses
+            if c.course_code and c.status in ("completed", "in-progress")
+        }
     )
 
 
@@ -54,10 +58,13 @@ async def advisement(
         raise HTTPException(status_code=400, detail="Student profile not set")
 
     # Collect courses by status
-    completed_courses = [c.course_code for c in session.courses if c.status == "completed"]
-    in_progress_courses = [c.course_code for c in session.courses if c.status == "in-progress"]
+    def codes_with_status(status: str) -> list[str]:
+        return [c.course_code for c in session.courses if c.status == status and c.course_code]
+
+    completed_courses = codes_with_status("completed")
+    in_progress_courses = codes_with_status("in-progress")
     planned_courses_list = [c for c in session.courses if c.status == "planned"]
-    planned_course_codes = [c.course_code for c in planned_courses_list]
+    planned_course_codes = codes_with_status("planned")
 
     # Calculate current planned credits
     current_planned_credits = sum(

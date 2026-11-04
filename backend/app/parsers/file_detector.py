@@ -97,7 +97,7 @@ async def _extract_pdf_text_preview(file: UploadFile, max_chars: int = 1000) -> 
         return ""
 
 
-def get_parser_for_file(file: UploadFile) -> Callable:
+def get_parser_for_file(file: UploadFile) -> Callable[..., Any] | None:
     """
     Get the appropriate parser function for a file type.
 

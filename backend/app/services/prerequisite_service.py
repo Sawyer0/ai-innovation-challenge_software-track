@@ -28,13 +28,11 @@ class PrerequisiteService:
         if not prereqs:
             return True
 
-        groups = {}
+        groups: dict[int | None, list[str | None]] = {}
         for p in prereqs:
-            if p.logic_group not in groups:
-                groups[p.logic_group] = []
-            groups[p.logic_group].append(p.prerequisite_course_code)
+            groups.setdefault(p.logic_group, []).append(p.prerequisite_course_code)
 
-        for _logic_group, course_options in groups.items():
+        for course_options in groups.values():
             if not any(c in completed_courses for c in course_options):
                 return False
 
@@ -71,11 +69,9 @@ class PrerequisiteService:
                 completed_with_grades[normalized] = grade
 
         # Group by logic_group
-        groups: dict[int, list[CoursePrerequisite]] = {}
+        groups: dict[int | None, list[CoursePrerequisite]] = {}
         for p in prereqs:
-            if p.logic_group not in groups:
-                groups[p.logic_group] = []
-            groups[p.logic_group].append(p)
+            groups.setdefault(p.logic_group, []).append(p)
 
         missing = []
 

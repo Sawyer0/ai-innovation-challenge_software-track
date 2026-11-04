@@ -210,12 +210,12 @@ def seed_policy_data(db: Session) -> None:
             db.add(EnrollmentStatusRule(**rule_data))
 
     for constraint_data in _FINANCIAL_AID_CONSTRAINTS:
-        exists = (
+        existing_constraint = (
             db.query(FinancialAidConstraint)
             .filter(FinancialAidConstraint.aid_type == constraint_data["aid_type"])
             .first()
         )
-        if not exists:
+        if not existing_constraint:
             db.add(FinancialAidConstraint(**constraint_data))
 
     db.commit()
@@ -292,8 +292,8 @@ def load_catalog(json_path: str):
         print("Loading prerequisites...")
         prereq_count = 0
         for c_data in data.courses:
-            course = course_map.get(c_data.code)
-            if not course or not c_data.prerequisites:
+            owner = course_map.get(c_data.code)
+            if not owner or not c_data.prerequisites:
                 continue
 
             for prereq in c_data.prerequisites:
@@ -304,7 +304,7 @@ def load_catalog(json_path: str):
                 parsed_entries = parse_prerequisite_text(text)
                 for entry in parsed_entries:
                     cp = CoursePrerequisite(
-                        course_id=course.id,
+                        course_id=owner.id,
                         prerequisite_course_code=entry.course_code,
                         is_corequisite=entry.is_corequisite,
                         logic_group=entry.logic_group,

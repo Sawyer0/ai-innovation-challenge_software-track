@@ -9,7 +9,7 @@ from .. import models
 
 
 def calculate_remaining_credits(
-    enrollment_status: str, current_planned_credits: float, db: Session
+    enrollment_status: str | None, current_planned_credits: float, db: Session
 ) -> float:
     """
     Calculate remaining credit capacity for a student based on enrollment status.
@@ -37,7 +37,10 @@ def calculate_remaining_credits(
 
 
 def check_financial_aid_compliance(
-    financial_aid_type: str | None, planned_credits: float, enrollment_status: str, db: Session
+    financial_aid_type: str | None,
+    planned_credits: float,
+    enrollment_status: str | None,
+    db: Session,
 ) -> tuple[bool, str | None]:
     """
     Check if a student's planned enrollment complies with financial aid requirements.

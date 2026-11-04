@@ -11,7 +11,7 @@ class SessionService:
     def create_session(self, session_id: str) -> StudentSession:
         return self.repo.create_session(session_id)
 
-    def get_session_with_data(self, session_id: str) -> dict:
+    def get_session_with_data(self, session_id: str) -> dict[str, Any] | None:
         session = self.repo.get_by_session_id(session_id)
         if not session:
             return None
