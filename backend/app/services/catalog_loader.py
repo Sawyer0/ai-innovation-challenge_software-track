@@ -278,6 +278,7 @@ def load_catalog(json_path: str):
                 department=c_data.department,
                 hegis_code=c_data.hegis_code,
                 typically_offered=c_data.typically_offered,
+                instruction_mode=instruction_mode,
             )
             db.add(course)
             course_map[course.code] = course
