@@ -8,7 +8,8 @@ from ..academics import (
     check_tap_elective_compliance,
     check_visa_compliance,
 )
-from ..dependencies import get_ai_service, get_current_session, get_db, get_prerequisite_service
+from ..database import get_db
+from ..dependencies import get_ai_service, get_current_session, get_prerequisite_service
 from ..dependencies.rate_limit import rate_limit
 from ..services.ai_service import AdvisementGenerationError, AIService
 from ..services.prerequisite_service import PrerequisiteService

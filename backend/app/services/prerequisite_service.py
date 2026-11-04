@@ -34,7 +34,7 @@ class PrerequisiteService:
                 groups[p.logic_group] = []
             groups[p.logic_group].append(p.prerequisite_course_code)
 
-        for logic_group, course_options in groups.items():
+        for _logic_group, course_options in groups.items():
             if not any(c in completed_courses for c in course_options):
                 return False
 
@@ -79,7 +79,7 @@ class PrerequisiteService:
 
         missing = []
 
-        for logic_group, prereq_list in groups.items():
+        for _logic_group, prereq_list in groups.items():
             group_satisfied = False
             group_requirements = []
 

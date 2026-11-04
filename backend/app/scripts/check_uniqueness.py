@@ -1,13 +1,6 @@
-import os
-import sys
+"""Report duplicate program, course and policy codes. Run: python -m app.scripts.check_uniqueness"""
 
 from sqlalchemy import func
-
-# Add the root directory to sys.path to allow importing from 'app'
-# Assuming the script is in backend/app/scripts/
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
 
 from app.database import SessionLocal
 from app.models import AcademicPolicy, Course, Program

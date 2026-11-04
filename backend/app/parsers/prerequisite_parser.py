@@ -178,7 +178,7 @@ def parse_prerequisite_text(raw_text: str) -> list[ParsedPrerequisite]:
     results = []
     current_group = 1
 
-    for i, (code, start, end) in enumerate(codes):
+    for i, (code, start, _end) in enumerate(codes):
         if i == 0:
             results.append(
                 ParsedPrerequisite(

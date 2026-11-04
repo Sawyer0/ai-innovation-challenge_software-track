@@ -2,10 +2,9 @@ from typing import Any
 
 from ..models import StudentCourse, StudentProfile, StudentSession
 from ..repositories.session_repository import SessionRepository
-from .base import BaseService
 
 
-class SessionService(BaseService):
+class SessionService:
     def __init__(self, repo: SessionRepository):
         self.repo = repo
 

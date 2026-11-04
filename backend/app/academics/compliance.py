@@ -29,11 +29,8 @@ def calculate_remaining_credits(
         .first()
     )
 
-    if not rule:
-        # Default to full-time if status not found
-        max_credits = 18.0
-    else:
-        max_credits = float(rule.max_credits) if rule.max_credits else 18.0
+    # Unknown status or no cap configured: fall back to the full-time maximum.
+    max_credits = float(rule.max_credits) if rule and rule.max_credits else 18.0
 
     remaining = max_credits - current_planned_credits
     return max(0, remaining)  # Don't return negative

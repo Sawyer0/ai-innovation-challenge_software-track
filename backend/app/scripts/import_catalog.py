@@ -1,40 +1,33 @@
+"""Import the BMCC catalog (and rules.json) into the database.
+
+Run from backend/: python -m app.scripts.import_catalog [--path data/bmcc-catalog.json]
+"""
+
 import argparse
-import os
+from pathlib import Path
 
-from ..services.catalog_loader import load_catalog
+from ..services.catalog_loader import DATA_DIR, load_catalog, load_rules
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Import BMCC catalog data into the database.")
-    parser.add_argument("--path", type=str, help="Path to the catalog JSON file")
     parser.add_argument(
-        "--fresh", action="store_true", help="Force a fresh import (drop and recreate tables)"
+        "--path",
+        type=Path,
+        default=DATA_DIR / "bmcc-catalog.json",
+        help="Path to the catalog JSON file (default: data/bmcc-catalog.json)",
     )
-
     args = parser.parse_args()
 
-    # Default path relative to the root of the project
-    if not args.path:
-        # We assume this script is run from the backend/ directory
-        # root/bmcc-catalog.json
-        args.path = os.path.join(os.getcwd(), "..", "bmcc-catalog.json")
-
-    if not os.path.exists(args.path):
-        # Try local data directory if not found in root
-        args.path = os.path.join(os.getcwd(), "data", "bmcc-catalog.json")
-
-    if not os.path.exists(args.path):
+    if not args.path.exists():
         print(f"Error: Catalog file not found at {args.path}")
         return
 
-    load_catalog(args.path)
+    load_catalog(str(args.path))
 
-    # Automatically try to load rules.json if it exists in the same data folder
-    rules_path = os.path.join(os.path.dirname(args.path), "rules.json")
-    if os.path.exists(rules_path):
-        from ..services.catalog_loader import load_rules
-
-        load_rules(rules_path)
+    rules_path = args.path.parent / "rules.json"
+    if rules_path.exists():
+        load_rules(str(rules_path))
     else:
         print(f"Note: rules.json not found at {rules_path}. Skipping rules import.")
 
