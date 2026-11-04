@@ -11,7 +11,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 venv/
+.venv/
 ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Database
 *.db
@@ -20,3 +26,6 @@ ENV/
 # OS
 Thumbs.db
 desktop.ini
+
+# Build output
+frontend/dist/
