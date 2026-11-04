@@ -7,5 +7,7 @@ python-dotenv>=1.0.0  # lets pydantic-settings read backend/.env
 python-multipart>=0.0.6
 anthropic>=0.40.0
 google-genai>=0.1.0
+httpx>=0.26.0  # Groq (OpenAI-compatible) HTTP client
+pypdf>=4.0.0  # PDF text for providers without PDF input (Groq)
 
 # Optional: scripts/scrape_bmcc.py (catalog refresh) also needs `playwright`.

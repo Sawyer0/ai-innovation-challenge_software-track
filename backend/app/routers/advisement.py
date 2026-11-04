@@ -11,6 +11,7 @@ from ..academics import (
 from ..database import get_db
 from ..dependencies import get_ai_service, get_current_session, get_prerequisite_service
 from ..dependencies.rate_limit import rate_limit
+from ..infrastructure.ai import NoProviderConfiguredError
 from ..services.ai_service import AdvisementGenerationError, AIService
 from ..services.prerequisite_service import PrerequisiteService
 
@@ -151,6 +152,8 @@ async def advisement(
             db=db,
             student_message=chat_msg.message,
         )
+    except NoProviderConfiguredError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except AdvisementGenerationError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 

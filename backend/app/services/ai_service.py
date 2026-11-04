@@ -1,4 +1,4 @@
-"""Course advisement generation: Claude first, Gemini as a fallback."""
+"""Course advisement generation, falling back across configured AI providers."""
 
 import logging
 from typing import Any
@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from ..academics import calculate_remaining_credits, get_next_semester
-from ..infrastructure.ai import claude_complete, gemini_complete, parse_json_response
+from ..infrastructure.ai import get_providers, parse_json_response
 from ..models import StudentProfile
 from ..prompts import (
     ADVISEMENT_SYSTEM_PROMPT,
@@ -16,9 +16,11 @@ from ..schemas import AdvisementResponse, RecommendedCourse
 
 logger = logging.getLogger(__name__)
 
+ADVISEMENT_MAX_TOKENS = 4096
+
 
 class AdvisementGenerationError(RuntimeError):
-    """Raised when neither AI provider returns a usable advisement."""
+    """Raised when no configured AI provider returns a usable advisement."""
 
 
 def _parse_advisement(
@@ -94,33 +96,19 @@ class AIService:
             student_message=student_message or "What should I take next?",
         )
 
-        for provider in (self._call_claude, self._call_gemini):
-            raw = await provider(user_prompt)
-            if raw is None:
-                continue
+        for provider in get_providers():
             try:
-                return _parse_advisement(raw, next_semester, current_planned_credits)
-            except (KeyError, TypeError, ValueError) as e:
-                logger.warning("Malformed advisement from %s: %s", provider.__name__, e)
+                text = await provider.complete(
+                    ADVISEMENT_SYSTEM_PROMPT, user_prompt, max_tokens=ADVISEMENT_MAX_TOKENS
+                )
+                return _parse_advisement(
+                    parse_json_response(text), next_semester, current_planned_credits
+                )
+            except Exception as e:
+                logger.warning(
+                    "Advisement via %s failed, trying next provider: %s", provider.name, e
+                )
 
         raise AdvisementGenerationError(
-            "Advisement generation failed: neither Claude nor Gemini returned a usable plan."
+            "Advisement generation failed: no configured AI provider returned a usable plan."
         )
-
-    async def _call_claude(self, user_prompt: str) -> dict[str, Any] | None:
-        try:
-            text = await claude_complete(ADVISEMENT_SYSTEM_PROMPT, user_prompt, max_tokens=2048)
-            result: dict[str, Any] = parse_json_response(text)
-            return result
-        except Exception as e:
-            logger.warning("Claude advisement failed, trying Gemini: %s", e)
-            return None
-
-    async def _call_gemini(self, user_prompt: str) -> dict[str, Any] | None:
-        try:
-            text = await gemini_complete([ADVISEMENT_SYSTEM_PROMPT, user_prompt])
-            result: dict[str, Any] = parse_json_response(text)
-            return result
-        except Exception as e:
-            logger.warning("Gemini advisement failed: %s", e)
-            return None

@@ -1,13 +1,11 @@
-import base64
 import csv
 import io
 import logging
 from typing import Any
 
 from fastapi import UploadFile
-from google.genai import types as genai_types
 
-from ..infrastructure.ai import claude_complete, gemini_complete, parse_json_response
+from ..infrastructure.ai import get_providers, parse_json_response
 from ..prompts import (
     TRANSCRIPT_PARSING_SYSTEM_PROMPT,
     TRANSCRIPT_PARSING_USER_PROMPT,
@@ -15,6 +13,8 @@ from ..prompts import (
 from .validators import validate_course_codes
 
 logger = logging.getLogger(__name__)
+
+TRANSCRIPT_MAX_TOKENS = 4096
 
 SUPPORTED_MIME_TYPES = {"application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp"}
 
@@ -45,38 +45,10 @@ def _normalize_result(raw: Any) -> dict[str, Any]:
     return {"profile": profile, "courses": courses}
 
 
-async def _parse_with_claude(file_content: bytes, mime_type: str) -> dict[str, Any]:
-    block_type = "document" if mime_type == "application/pdf" else "image"
-    content = [
-        {
-            "type": block_type,
-            "source": {
-                "type": "base64",
-                "media_type": mime_type,
-                "data": base64.standard_b64encode(file_content).decode("utf-8"),
-            },
-        },
-        {"type": "text", "text": TRANSCRIPT_PARSING_USER_PROMPT},
-    ]
-    text = await claude_complete(TRANSCRIPT_PARSING_SYSTEM_PROMPT, content, max_tokens=4096)
-    return _normalize_result(parse_json_response(text))
-
-
-async def _parse_with_gemini(file_content: bytes, mime_type: str) -> dict[str, Any]:
-    text = await gemini_complete(
-        [
-            TRANSCRIPT_PARSING_SYSTEM_PROMPT,
-            genai_types.Part.from_bytes(data=file_content, mime_type=mime_type),
-            TRANSCRIPT_PARSING_USER_PROMPT,
-        ]
-    )
-    return _normalize_result(parse_json_response(text))
-
-
 async def parse_transcript(file: UploadFile) -> dict[str, Any]:
     """
     Parse a student transcript into {profile: {...}, courses: [...]}.
-    Tries Claude first, falls back to Gemini, raises if both fail.
+    Tries each configured provider in order; raises if none can read it.
     """
     file_content = await file.read()
     await file.seek(0)
@@ -86,22 +58,23 @@ async def parse_transcript(file: UploadFile) -> dict[str, Any]:
             f"Unsupported file type {mime_type or 'unknown'}; upload a PDF or an image."
         )
 
-    try:
-        result = await _parse_with_claude(file_content, mime_type)
-        logger.info("Transcript parsed via Claude")
-        return result
-    except Exception as claude_err:
-        logger.warning("Claude parsing failed, trying Gemini: %s", claude_err)
-
-    try:
-        result = await _parse_with_gemini(file_content, mime_type)
-        logger.info("Transcript parsed via Gemini (fallback)")
-        return result
-    except Exception as gemini_err:
-        logger.warning("Gemini parsing failed: %s", gemini_err)
+    for provider in get_providers():
+        try:
+            text = await provider.read_document(
+                TRANSCRIPT_PARSING_SYSTEM_PROMPT,
+                TRANSCRIPT_PARSING_USER_PROMPT,
+                file_content,
+                mime_type,
+                max_tokens=TRANSCRIPT_MAX_TOKENS,
+            )
+            result = _normalize_result(parse_json_response(text))
+            logger.info("Transcript parsed via %s", provider.name)
+            return result
+        except Exception as e:
+            logger.warning("Transcript parsing via %s failed: %s", provider.name, e)
 
     raise TranscriptParsingError(
-        "Transcript parsing failed: both Claude and Gemini were unable to process the file."
+        "Transcript parsing failed: no configured AI provider could read the file."
     )
 
 

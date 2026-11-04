@@ -29,50 +29,41 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 
 class FakeProvider:
-    """Stands in for an AI provider: replays queued replies, records every call.
+    """An LLMProvider that replays queued replies and records every call.
 
-    With nothing queued it raises, like a provider that is down or unconfigured.
+    With nothing queued it raises, like a provider that is down.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, name: str) -> None:
+        self.name = name
         self.replies: list[str] = []
         self.calls: list[dict[str, Any]] = []
 
     def queue(self, *replies: str | dict[str, Any] | list[Any]) -> None:
         self.replies.extend(r if isinstance(r, str) else json.dumps(r) for r in replies)
 
-    def _next(self, **kwargs: Any) -> str:
-        self.calls.append(kwargs)
+    def _next(self, **call: Any) -> str:
+        self.calls.append(call)
         if not self.replies:
-            raise RuntimeError("provider unavailable (no reply queued)")
+            raise RuntimeError(f"{self.name} unavailable (no reply queued)")
         return self.replies.pop(0)
 
+    async def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
+        return self._next(system=system, prompt=prompt)
 
-class FakeClaude(FakeProvider):
-    def __init__(self) -> None:
-        super().__init__()
-        self.messages = SimpleNamespace(create=self._create)
-
-    def _create(self, **kwargs: Any) -> SimpleNamespace:
-        return SimpleNamespace(content=[SimpleNamespace(text=self._next(**kwargs))])
-
-
-class FakeGemini(FakeProvider):
-    def __init__(self) -> None:
-        super().__init__()
-        self.models = SimpleNamespace(generate_content=self._generate)
-
-    def _generate(self, **kwargs: Any) -> SimpleNamespace:
-        return SimpleNamespace(text=self._next(**kwargs))
+    async def read_document(
+        self, system: str, prompt: str, data: bytes, mime_type: str, *, max_tokens: int
+    ) -> str:
+        return self._next(system=system, prompt=prompt, data=data, mime_type=mime_type)
 
 
 @pytest.fixture(autouse=True)
 def ai_providers(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
-    """Replace Claude and Gemini everywhere so no test can reach a real API."""
-    claude, gemini = FakeClaude(), FakeGemini()
-    monkeypatch.setattr("app.infrastructure.ai.client.get_claude_client", lambda: claude)
-    monkeypatch.setattr("app.infrastructure.ai.client.get_gemini_client", lambda: gemini)
-    return SimpleNamespace(claude=claude, gemini=gemini)
+    """Swap the provider chain for two fakes so no test can reach a real API."""
+    primary, fallback = FakeProvider("primary"), FakeProvider("fallback")
+    for module in ("app.services.ai_service", "app.parsers.transcript_parser"):
+        monkeypatch.setattr(f"{module}.get_providers", lambda: [primary, fallback])
+    return SimpleNamespace(primary=primary, fallback=fallback)
 
 
 @pytest.fixture(scope="function")
