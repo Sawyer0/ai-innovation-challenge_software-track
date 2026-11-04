@@ -13,7 +13,7 @@ from sqlalchemy import text
 from .config import settings
 from .database import engine
 from .infrastructure.ai import MISSING_KEY_MESSAGE
-from .routers import advisement, courses, programs, sessions, transcript, upload
+from .routers import advisement, courses, programs, sessions, transcript
 from .services.catalog_loader import initialize_database
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,5 @@ def health_check() -> dict[str, Any]:
 app.include_router(courses.router)
 app.include_router(programs.router)
 app.include_router(sessions.router)
-app.include_router(upload.router)
 app.include_router(transcript.router)
 app.include_router(advisement.router)
