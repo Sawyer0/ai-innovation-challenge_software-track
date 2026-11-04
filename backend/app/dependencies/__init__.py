@@ -30,7 +30,7 @@ from .rate_limit import RateLimiter, get_rate_limiter, rate_limit
 R = TypeVar("R", bound=BaseRepository)
 
 
-def get_repository(repo_class: type[R]) -> Callable[[Session], R]:
+def get_repository(repo_class: Callable[[Session], R]) -> Callable[[Session], R]:
     """
     Create a factory function for a repository class.
 

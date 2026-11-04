@@ -10,7 +10,7 @@ class SessionRepository(BaseRepository[StudentSession]):
     def __init__(self, db: Session):
         super().__init__(db, StudentSession)
 
-    def get_by_session_id(self, session_id: str) -> StudentSession:
+    def get_by_session_id(self, session_id: str) -> StudentSession | None:
         """Get session by its string identifier."""
         return self.db.query(StudentSession).filter(StudentSession.session_id == session_id).first()
 
@@ -18,7 +18,7 @@ class SessionRepository(BaseRepository[StudentSession]):
         """Create a new student session."""
         return self.create({"session_id": session_id})
 
-    def get_profile(self, session_id: str) -> StudentProfile:
+    def get_profile(self, session_id: str) -> StudentProfile | None:
         """Get student profile by session ID."""
         return self.db.query(StudentProfile).filter(StudentProfile.session_id == session_id).first()
 
@@ -39,7 +39,7 @@ class SessionRepository(BaseRepository[StudentSession]):
         self.db.refresh(profile)
         return profile
 
-    def get_course(self, session_id: str, course_code: str) -> StudentCourse:
+    def get_course(self, session_id: str, course_code: str) -> StudentCourse | None:
         """Get a specific student course by session and course code."""
         return (
             self.db.query(StudentCourse)
