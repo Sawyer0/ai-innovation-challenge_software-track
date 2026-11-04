@@ -1,18 +1,20 @@
 import json
+
 import anthropic
 from google import genai
+from sqlalchemy.orm import Session
+
 from ..config import settings
 from ..models import StudentProfile
-from ..schemas import AdvisementResponse, RecommendedCourse
-from typing import List, Optional
-from sqlalchemy.orm import Session
 from ..prompts import (
     ADVISEMENT_SYSTEM_PROMPT,
     ADVISEMENT_USER_PROMPT_TEMPLATE,
 )
-from ..utils import get_next_semester, calculate_remaining_credits
-_claude_client: Optional[anthropic.Anthropic] = None
-_gemini_client: Optional[genai.Client] = None
+from ..schemas import AdvisementResponse, RecommendedCourse
+from ..utils import calculate_remaining_credits, get_next_semester
+
+_claude_client: anthropic.Anthropic | None = None
+_gemini_client: genai.Client | None = None
 
 
 def _get_claude_client() -> anthropic.Anthropic:
@@ -66,16 +68,18 @@ def _parse_advisement(raw: dict, next_semester: str, planned_credits: float) -> 
 class AIService:
     """Service for AI-powered advisement generation."""
 
-    async def generate_advisement(self,
-                                  profile: StudentProfile,
-                                  completed_courses: List[str],
-                                  in_progress_courses: List[str],
-                                  planned_courses: List[str],
-                                  available_courses: List[dict],
-                                  warnings: List[str],
-                                  current_planned_credits: float,
-                                  db: Session,
-                                  student_message: Optional[str] = None) -> str:
+    async def generate_advisement(
+        self,
+        profile: StudentProfile,
+        completed_courses: list[str],
+        in_progress_courses: list[str],
+        planned_courses: list[str],
+        available_courses: list[dict],
+        warnings: list[str],
+        current_planned_credits: float,
+        db: Session,
+        student_message: str | None = None,
+    ) -> str:
         """Generate personalized course advisement using imported prompts."""
 
         # Calculate dynamic values
@@ -100,7 +104,9 @@ class AIService:
             completed_courses=", ".join(completed_courses) if completed_courses else "None",
             in_progress_courses=", ".join(in_progress_courses) if in_progress_courses else "None",
             planned_courses=", ".join(planned_courses) if planned_courses else "None",
-            available_courses="\n".join([f"- {c['code']}: {c['title']}" for c in available_courses]),
+            available_courses="\n".join(
+                [f"- {c['code']}: {c['title']}" for c in available_courses]
+            ),
             next_semester=next_semester,
             remaining_credits=remaining_credits,
             warnings=", ".join(warnings) if warnings else "All compliance checks passed.",
@@ -111,11 +117,13 @@ class AIService:
         if raw is None:
             raw = await self._call_gemini(user_prompt)
         if raw is None:
-            raise Exception("Advisement generation failed: both Claude and Gemini were unable to respond.")
+            raise Exception(
+                "Advisement generation failed: both Claude and Gemini were unable to respond."
+            )
 
         return _parse_advisement(raw, next_semester, current_planned_credits)
 
-    async def _call_claude(self, user_prompt: str) -> Optional[dict]:
+    async def _call_claude(self, user_prompt: str) -> dict | None:
         try:
             client = _get_claude_client()
             message = client.messages.create(
@@ -129,7 +137,7 @@ class AIService:
             print(f"Claude advisement failed: {e} — trying Gemini")
             return None
 
-    async def _call_gemini(self, user_prompt: str) -> Optional[dict]:
+    async def _call_gemini(self, user_prompt: str) -> dict | None:
         try:
             client = _get_gemini_client()
             response = client.models.generate_content(

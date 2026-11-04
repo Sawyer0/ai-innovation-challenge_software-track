@@ -2,9 +2,10 @@
 Upload endpoint — parses transcripts and DegreeWorks files.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from ..models import StudentSession
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+
 from ..dependencies import get_current_session, get_parser_service
+from ..models import StudentSession
 from ..services.parser_service import ParserService
 
 router = APIRouter(prefix="/api/session", tags=["upload"])

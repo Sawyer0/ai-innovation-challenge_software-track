@@ -21,12 +21,12 @@ except ImportError:
     class _MockModels:
         def generate_content(self, **kwargs):
             raise RuntimeError(
-                "Google genai package not installed. "
-                "Install with: pip install google-generativeai"
+                "Google genai package not installed. Install with: pip install google-generativeai"
             )
 
     class _MockClient:
         """Mock client that raises error when used."""
+
         def __init__(self, api_key=None):
             self.api_key = api_key
             self.models = _MockModels()
@@ -65,12 +65,7 @@ class AIClient:
         """Get the configured model name."""
         return settings.GEMINI_MODEL
 
-    def generate_content(
-        self,
-        contents: list,
-        model: Optional[str] = None,
-        **kwargs
-    ) -> str:
+    def generate_content(self, contents: list, model: str | None = None, **kwargs) -> str:
         """
         Generate content using the AI model.
 
@@ -84,14 +79,12 @@ class AIClient:
         """
         model_name = model or self.model
         response = self.client.models.generate_content(
-            model=model_name,
-            contents=contents,
-            **kwargs
+            model=model_name, contents=contents, **kwargs
         )
         return response.text
 
 
-@lru_cache()
+@lru_cache
 def get_ai_client() -> AIClient:
     """
     Get the singleton AI client instance.

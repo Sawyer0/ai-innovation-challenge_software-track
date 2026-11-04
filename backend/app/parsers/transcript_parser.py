@@ -1,19 +1,20 @@
 import base64
-import json
-import anthropic
-from google import genai
-from google.genai import types as genai_types
-from ..config import settings
 import csv
 import io
 import json
-from typing import Dict, Any
+from typing import Any
+
+import anthropic
 from fastapi import UploadFile
+from google import genai
+from google.genai import types as genai_types
+
+from ..config import settings
 from ..prompts import (
     TRANSCRIPT_PARSING_SYSTEM_PROMPT,
     TRANSCRIPT_PARSING_USER_PROMPT,
 )
-from .validators import validate_course_codes, flag_low_confidence_courses
+from .validators import validate_course_codes
 
 _claude_client = None
 _gemini_client = None
@@ -147,26 +148,27 @@ async def parse_transcript(file: UploadFile) -> dict:
     except Exception as gemini_err:
         print(f"Gemini parsing failed: {gemini_err}")
 
-    raise Exception("Transcript parsing failed: both Claude and Gemini were unable to process the file.")
+    raise Exception(
+        "Transcript parsing failed: both Claude and Gemini were unable to process the file."
+    )
 
 
-
-async def parse_transcript_csv(file: UploadFile) -> Dict[str, Any]:
+async def parse_transcript_csv(file: UploadFile) -> dict[str, Any]:
     """
     Parse CSV transcript file.
     Expected columns: course_code, course_title, semester_taken, credits, grade, status
     """
     content = await file.read()
     await file.seek(0)
-    
+
     try:
-        text = content.decode('utf-8')
+        text = content.decode("utf-8")
     except UnicodeDecodeError:
-        text = content.decode('latin-1')
-    
+        text = content.decode("latin-1")
+
     reader = csv.DictReader(io.StringIO(text))
     courses = []
-    
+
     for row in reader:
         course = {
             "code": row.get("course_code", ""),
@@ -175,33 +177,35 @@ async def parse_transcript_csv(file: UploadFile) -> Dict[str, Any]:
             "credits": float(row.get("credits", 0)) if row.get("credits") else 0,
             "grade": row.get("grade") or None,
             "status": row.get("status", "completed"),
-            "confidence": 1.0  # CSV data is explicit
+            "confidence": 1.0,  # CSV data is explicit
         }
         courses.append(course)
-    
+
     # Validate
     valid_courses, invalid_courses = validate_course_codes(courses)
-    
+
     return {
         "source": "transcript_csv",
         "confidence": 1.0,
         "student": {},
         "courses": {
             "completed": [
-                c for c in valid_courses 
+                c
+                for c in valid_courses
                 if c.get("status") in ["completed", "passed"] or c.get("grade")
             ],
             "in_progress": [
-                c for c in valid_courses 
+                c
+                for c in valid_courses
                 if c.get("status") in ["in_progress", "enrolled"] or not c.get("grade")
             ],
             "still_needed": [],
-            "fall_through": []
+            "fall_through": [],
         },
         "all_courses": valid_courses,
         "requirements": [],
         "validated": valid_courses,
         "flagged": [],
         "invalid": invalid_courses,
-        "requires_confirmation": len(invalid_courses) > 0
+        "requires_confirmation": len(invalid_courses) > 0,
     }

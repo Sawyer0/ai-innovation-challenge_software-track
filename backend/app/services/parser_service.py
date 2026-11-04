@@ -1,5 +1,7 @@
-from typing import Dict, Any
+from typing import Any
+
 from fastapi import UploadFile
+
 from ..parsers.transcript_parser import parse_transcript
 from .session_service import SessionService
 
@@ -12,7 +14,7 @@ class ParserService:
         self,
         file: UploadFile,
         session_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Parse uploaded transcript and return {profile, courses}.
         Filters out entries without a course_code to avoid DB constraint errors.

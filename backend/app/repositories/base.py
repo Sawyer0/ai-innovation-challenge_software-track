@@ -1,6 +1,6 @@
-from typing import TypeVar, Type, List, Optional, Generic, Any
+from typing import Any, Generic, TypeVar
+
 from sqlalchemy.orm import Session
-from sqlalchemy import select, or_
 
 T = TypeVar("T")
 
@@ -8,21 +8,23 @@ T = TypeVar("T")
 class BaseRepository(Generic[T]):
     """Generic base repository with common CRUD operations."""
 
-    def __init__(self, db: Session, model_class: Type[T]):
+    def __init__(self, db: Session, model_class: type[T]):
         self.db = db
         self.model_class = model_class
 
-    def get_by_id(self, id: int) -> Optional[T]:
+    def get_by_id(self, id: int) -> T | None:
         """Get entity by primary key."""
         return self.db.get(self.model_class, id)
 
-    def get_by_field(self, field_name: str, value: Any) -> Optional[T]:
+    def get_by_field(self, field_name: str, value: Any) -> T | None:
         """Get entity by a specific field value."""
-        return self.db.query(self.model_class).filter(
-            getattr(self.model_class, field_name) == value
-        ).first()
+        return (
+            self.db.query(self.model_class)
+            .filter(getattr(self.model_class, field_name) == value)
+            .first()
+        )
 
-    def list_all(self, skip: int = 0, limit: int = 100) -> List[T]:
+    def list_all(self, skip: int = 0, limit: int = 100) -> list[T]:
         """Get paginated list of all entities."""
         return self.db.query(self.model_class).offset(skip).limit(limit).all()
 
@@ -51,7 +53,7 @@ class BaseRepository(Generic[T]):
     def exists(self, field_name: str, value: Any) -> bool:
         """Check if entity exists by field value."""
         return self.db.query(
-            self.db.query(self.model_class).filter(
-                getattr(self.model_class, field_name) == value
-            ).exists()
+            self.db.query(self.model_class)
+            .filter(getattr(self.model_class, field_name) == value)
+            .exists()
         ).scalar()

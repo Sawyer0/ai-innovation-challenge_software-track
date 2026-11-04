@@ -2,10 +2,8 @@
 Grade utilities for prerequisite checking and validation.
 """
 
-from typing import Dict
-
 # Grade ranking for comparison (higher = better)
-GRADE_RANK: Dict[str, int] = {
+GRADE_RANK: dict[str, int] = {
     "A+": 12,
     "A": 11,
     "A-": 10,
@@ -40,14 +38,14 @@ def normalize_grade(grade: str) -> str:
 def meets_minimum_grade(grade: str, minimum: str = "C") -> bool:
     """
     Check if a grade meets the minimum requirement.
-    
+
     Args:
         grade: The student's grade (e.g., "B+", "C")
         minimum: The minimum required grade (default: "C")
-        
+
     Returns:
         True if grade meets or exceeds minimum
-        
+
     Examples:
         >>> meets_minimum_grade("B", "C")
         True
@@ -58,18 +56,18 @@ def meets_minimum_grade(grade: str, minimum: str = "C") -> bool:
     """
     if not grade:
         return False
-        
+
     grade = normalize_grade(grade)
     minimum = normalize_grade(minimum)
-    
+
     # Handle pass/fail special cases
     if grade in ["CR", "P", "PASS", "S"]:
         return True  # Passing grade meets any minimum
-        
+
     # Get ranks (default to 0 if unknown)
     grade_rank = GRADE_RANK.get(grade, 0)
     min_rank = GRADE_RANK.get(minimum, 5)  # Default to C rank if unknown
-    
+
     return grade_rank >= min_rank
 
 

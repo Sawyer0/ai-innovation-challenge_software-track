@@ -7,24 +7,21 @@ Follows Google testing best practices:
 - Test database separate from dev/prod
 """
 
+from unittest.mock import Mock
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from unittest.mock import Mock, patch
 
 from app.database import Base, get_db
 from app.main import app
-from app.config import settings
 
 # Test database URL
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 
 # Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, 
-    connect_args={"check_same_thread": False}
-)
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -36,32 +33,33 @@ def db():
     """
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
-    
+
     # Seed enrollment status rules
     from app import models
+
     default_rules = [
         models.EnrollmentStatusRule(
             status_name="full-time",
             min_credits=12,
             max_credits=18,
-            description="Full-time student (12-18 credits)"
+            description="Full-time student (12-18 credits)",
         ),
         models.EnrollmentStatusRule(
             status_name="half-time",
             min_credits=6,
             max_credits=11,
-            description="Half-time student (6-11 credits)"
+            description="Half-time student (6-11 credits)",
         ),
         models.EnrollmentStatusRule(
             status_name="less-than-half-time",
             min_credits=0,
             max_credits=5,
-            description="Less than half-time (0-5 credits)"
+            description="Less than half-time (0-5 credits)",
         ),
     ]
     for rule in default_rules:
         session.add(rule)
-    
+
     # Seed financial aid constraints
     aid_constraints = [
         models.FinancialAidConstraint(
@@ -70,7 +68,7 @@ def db():
             min_status_required="half-time",
             warning_message="Dropping below 6 credits may affect your Pell Grant eligibility.",
             block_underload=False,
-            allow_exception_process=False
+            allow_exception_process=False,
         ),
         models.FinancialAidConstraint(
             aid_type="tap",
@@ -78,16 +76,16 @@ def db():
             min_status_required="full-time",
             warning_message="TAP requires full-time enrollment (12+ credits).",
             block_underload=False,
-            allow_exception_process=False
+            allow_exception_process=False,
         ),
     ]
     for constraint in aid_constraints:
         session.add(constraint)
-    
+
     session.commit()
-    
+
     yield session
-    
+
     session.close()
     Base.metadata.drop_all(bind=engine)
 
@@ -98,12 +96,13 @@ def client(db):
     TestClient with overridden DB dependency.
     Uses the test database session.
     """
+
     def override_get_db():
         try:
             yield db
         finally:
             pass
-    
+
     app.dependency_overrides[get_db] = override_get_db
     yield TestClient(app)
     del app.dependency_overrides[get_db]
@@ -115,20 +114,21 @@ def mock_gemini_client(monkeypatch):
     Mock Gemini API client for all AI-related tests.
     Prevents real API calls during testing.
     """
+
     class MockGeminiClient:
         def __init__(self, **kwargs):
             pass
-        
+
         class models:
             @staticmethod
             def generate_content(**kwargs):
                 response = Mock()
                 response.text = "Mocked Gemini response"
                 return response
-    
+
     # Patch the Gemini client import path
     monkeypatch.setattr("google.genai.Client", MockGeminiClient)
-    
+
     yield MockGeminiClient()
 
 
@@ -138,13 +138,14 @@ def mock_profile():
     Standard student profile for testing.
     """
     from unittest.mock import Mock
+
     return Mock(
         enrollment_status="full-time",
         student_type="regular",
         financial_aid_type="pell",
         program_code="CSC-AS",
         graduation_semester="Spring",
-        graduation_year=2026
+        graduation_year=2026,
     )
 
 
@@ -160,7 +161,7 @@ def sample_courses():
             "credits": 4.0,
             "subject": "MAT",
             "department": "Mathematics",
-            "hegis_code": "5617.00"
+            "hegis_code": "5617.00",
         },
         {
             "code": "MAT 206",
@@ -168,7 +169,7 @@ def sample_courses():
             "credits": 4.0,
             "subject": "MAT",
             "department": "Mathematics",
-            "hegis_code": "5617.00"
+            "hegis_code": "5617.00",
         },
         {
             "code": "ENG 101",
@@ -176,7 +177,7 @@ def sample_courses():
             "credits": 3.0,
             "subject": "ENG",
             "department": "English",
-            "hegis_code": "1501.00"
+            "hegis_code": "1501.00",
         },
         {
             "code": "CSC 103",
@@ -184,7 +185,7 @@ def sample_courses():
             "credits": 3.0,
             "subject": "CSC",
             "department": "Computer Science",
-            "hegis_code": "5101.00"
+            "hegis_code": "5101.00",
         },
     ]
 
@@ -199,13 +200,13 @@ def sample_prerequisites():
             "course_code": "MAT 206",
             "prerequisite_course_code": "MAT 157",
             "is_corequisite": False,
-            "logic_group": 1
+            "logic_group": 1,
         },
         {
             "course_code": "CSC 201",
             "prerequisite_course_code": "CSC 103",
             "is_corequisite": False,
-            "logic_group": 1
+            "logic_group": 1,
         },
     ]
 
@@ -219,45 +220,46 @@ def full_catalog(db):
     import json
     import os
     from decimal import Decimal
-    from app.models import Course, Program, CoursePrerequisite, ProgramRequirement
-    
+
+    from app.models import Course, CoursePrerequisite, Program, ProgramRequirement
+
     # Find catalog file
     catalog_paths = [
         os.path.join(os.path.dirname(__file__), "../../bmcc-catalog.json"),
         os.path.join(os.path.dirname(__file__), "../../../bmcc-catalog.json"),
     ]
-    
+
     catalog_path = None
     for path in catalog_paths:
         if os.path.exists(path):
             catalog_path = path
             break
-    
+
     if not catalog_path:
         pytest.skip("bmcc-catalog.json not found - cannot load full catalog")
-    
+
     # Load catalog JSON
-    with open(catalog_path, 'r', encoding='utf-8') as f:
+    with open(catalog_path, encoding="utf-8") as f:
         catalog_data = json.load(f)
-    
+
     courses_data = catalog_data.get("courses", [])
     programs_data = catalog_data.get("programs", [])
-    
+
     # Insert courses
     course_map = {}  # code -> Course object
     seen_codes = set()
-    
+
     for c_data in courses_data:
         code = c_data.get("code")
         if not code or code in seen_codes:
             continue
         seen_codes.add(code)
-        
+
         try:
             credit_val = Decimal(str(c_data.get("credits", 0)))
         except Exception:
             credit_val = Decimal(0)
-        
+
         course = Course(
             code=code,
             title=c_data.get("title", ""),
@@ -271,38 +273,36 @@ def full_catalog(db):
         )
         db.add(course)
         course_map[code] = course
-    
+
     db.commit()
-    
+
     # Refresh to get course IDs
     for course in course_map.values():
         db.refresh(course)
-    
+
     # Insert prerequisites
     prereq_count = 0
     for c_data in courses_data:
         code = c_data.get("code")
         prereqs = c_data.get("prerequisites", [])
-        
+
         course = course_map.get(code)
         if not course or not prereqs:
             continue
-        
+
         for prereq in prereqs:
-            text = prereq.get("text", "").strip() if isinstance(prereq, dict) else str(prereq).strip()
+            text = (
+                prereq.get("text", "").strip() if isinstance(prereq, dict) else str(prereq).strip()
+            )
             if not text:
                 continue
-            
-            cp = CoursePrerequisite(
-                course_id=course.id,
-                is_corequisite=False,
-                notes=text
-            )
+
+            cp = CoursePrerequisite(course_id=course.id, is_corequisite=False, notes=text)
             db.add(cp)
             prereq_count += 1
-    
+
     db.commit()
-    
+
     # Insert programs
     seen_programs = set()
     for p_data in programs_data:
@@ -310,7 +310,7 @@ def full_catalog(db):
         if not prog_code or prog_code in seen_programs:
             continue
         seen_programs.add(prog_code)
-        
+
         program = Program(
             program_code=prog_code,
             name=p_data.get("name", ""),
@@ -323,7 +323,7 @@ def full_catalog(db):
         db.add(program)
         db.commit()
         db.refresh(program)
-        
+
         # Insert program requirements
         semesters = p_data.get("semesters", [])
         for sem in semesters:
@@ -337,7 +337,7 @@ def full_catalog(db):
                     is_required=True,
                 )
                 db.add(pr)
-            
+
             # Elective groups
             for egroup in sem.get("elective_groups", []):
                 for elect_code in egroup.get("courses", []):
@@ -350,13 +350,13 @@ def full_catalog(db):
                         elective_group=egroup.get("name"),
                     )
                     db.add(pr)
-        
+
         db.commit()
-    
+
     yield {
         "courses": len(course_map),
         "prerequisites": prereq_count,
-        "programs": len(seen_programs)
+        "programs": len(seen_programs),
     }
-    
+
     # Cleanup happens automatically when db fixture tears down

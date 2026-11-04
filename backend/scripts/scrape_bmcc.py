@@ -25,14 +25,16 @@ Resolved field mappings (from API diagnostic):
     diplomaDescription     -> "Associate in Science"
     requisites.requisitesSimple -> completion requirements
 """
+
+import asyncio
 import json
 import re
-import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from playwright.async_api import async_playwright
 
-CATALOG_ID = 'YiimrCscg9IpPRh0XQeo'
-BASE_URL = 'https://app.coursedog.com/api/v1/cm/bmc01'
+CATALOG_ID = "YiimrCscg9IpPRh0XQeo"
+BASE_URL = "https://app.coursedog.com/api/v1/cm/bmc01"
 PAGE_SIZE = 1000
 
 
@@ -40,8 +42,8 @@ def strip_html(html_str):
     """Remove HTML tags and collapse whitespace."""
     if not html_str:
         return ""
-    text = re.sub(r'<[^>]+>', ' ', html_str)
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"<[^>]+>", " ", html_str)
+    text = re.sub(r"\s+", " ", text).strip()
     return text
 
 
@@ -81,12 +83,14 @@ def parse_components(components_list):
     for comp in components_list:
         if not isinstance(comp, dict):
             continue
-        result.append({
-            "type": comp.get("name", comp.get("code", "")),
-            "contact_hours": comp.get("contactHours", 0),
-            "workload_hours": comp.get("workloadHours", 0),
-            "instruction_mode": comp.get("instructionMode", ""),
-        })
+        result.append(
+            {
+                "type": comp.get("name", comp.get("code", "")),
+                "contact_hours": comp.get("contactHours", 0),
+                "workload_hours": comp.get("workloadHours", 0),
+                "instruction_mode": comp.get("instructionMode", ""),
+            }
+        )
     return result
 
 
@@ -147,7 +151,7 @@ def find_program_description(custom_fields):
 
 def normalize_course_ref(value):
     """Normalize a literal course code or wildcard pattern.
-    
+
     Examples:
         'HIS  @' -> 'HIS *' (any HIS course)
         'MMP 260' -> 'MMP 260' (specific course)
@@ -156,18 +160,21 @@ def normalize_course_ref(value):
     # Replace @ wildcard with *
     cleaned = value.replace("@", "*")
     # Collapse multiple spaces
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
 
 async def fetch_json(page, url):
-    return await page.evaluate("""
+    return await page.evaluate(
+        """
         async (url) => {
             const res = await fetch(url);
             if (!res.ok) return { _error: res.status };
             return await res.json();
         }
-    """, url)
+    """,
+        url,
+    )
 
 
 async def paginated_fetch(page, endpoint, params):
@@ -204,15 +211,13 @@ async def main():
         context = await browser.new_context(
             viewport={"width": 1920, "height": 1080},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                       " (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            " (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         )
         page = await context.new_page()
 
         print("Navigating to BMCC Catalog (establishing session)...")
         await page.goto(
-            "https://bmcc.catalog.cuny.edu/",
-            wait_until="domcontentloaded",
-            timeout=60000
+            "https://bmcc.catalog.cuny.edu/", wait_until="domcontentloaded", timeout=60000
         )
         await page.wait_for_timeout(5000)
         print("Session established.\n")
@@ -222,15 +227,29 @@ async def main():
         # ================================================================
         print("--- Phase 1: Fetching all courses ---")
         # Request ALL relevant columns in one pass
-        course_columns = ",".join([
-            "displayName", "name", "longName", "code", "courseNumber",
-            "credits", "description", "subjectCode",
-            "departments", "departmentOwnership",
-            "components", "requisites",
-            "courseTypicallyOffered", "hegisCode",
-            "requirementDesignation", "courseGroupId",
-            "career", "catalogPrint", "requirementGroup"
-        ])
+        course_columns = ",".join(
+            [
+                "displayName",
+                "name",
+                "longName",
+                "code",
+                "courseNumber",
+                "credits",
+                "description",
+                "subjectCode",
+                "departments",
+                "departmentOwnership",
+                "components",
+                "requisites",
+                "courseTypicallyOffered",
+                "hegisCode",
+                "requirementDesignation",
+                "courseGroupId",
+                "career",
+                "catalogPrint",
+                "requirementGroup",
+            ]
+        )
         all_courses_raw = await paginated_fetch(
             page,
             f"{BASE_URL}/courses/search/%24filters",
@@ -238,8 +257,8 @@ async def main():
                 "catalogId": CATALOG_ID,
                 "orderBy": "code",
                 "formatDependents": "true",
-                "columns": course_columns
-            }
+                "columns": course_columns,
+            },
         )
         print(f"  Total courses fetched: {len(all_courses_raw)}\n")
 
@@ -258,22 +277,24 @@ async def main():
             requisites_data = parse_requisites(c.get("requisites", {}))
             components_data = parse_components(c.get("components", []))
 
-            courses.append({
-                "code": code,
-                "title": c.get("name") or c.get("displayName", ""),
-                "long_name": c.get("longName", ""),
-                "description": c.get("description", ""),
-                "credits": parse_credits(credits_raw),
-                "contact_hours": parse_contact_hours(credits_raw),
-                "subject": c.get("subjectCode", ""),
-                "department": parse_dept_name(c.get("departments", [])),
-                "components": components_data,
-                "typically_offered": c.get("courseTypicallyOffered", ""),
-                "prerequisites": requisites_data["prerequisites"],
-                "corequisites": requisites_data["corequisites"],
-                "hegis_code": c.get("hegisCode", ""),
-                "requirement_designation": c.get("requirementDesignation", ""),
-            })
+            courses.append(
+                {
+                    "code": code,
+                    "title": c.get("name") or c.get("displayName", ""),
+                    "long_name": c.get("longName", ""),
+                    "description": c.get("description", ""),
+                    "credits": parse_credits(credits_raw),
+                    "contact_hours": parse_contact_hours(credits_raw),
+                    "subject": c.get("subjectCode", ""),
+                    "department": parse_dept_name(c.get("departments", [])),
+                    "components": components_data,
+                    "typically_offered": c.get("courseTypicallyOffered", ""),
+                    "prerequisites": requisites_data["prerequisites"],
+                    "corequisites": requisites_data["corequisites"],
+                    "hegis_code": c.get("hegisCode", ""),
+                    "requirement_designation": c.get("requirementDesignation", ""),
+                }
+            )
 
             if gid:
                 group_to_code[gid] = code
@@ -282,15 +303,18 @@ async def main():
         # Phase 1.5: Fetch Requirement Groups for Prerequisites
         # ================================================================
         print("\n--- Phase 1.5: Fetching prerequisite data (requirementGroups) ---")
-        req_group_ids = list(set(c.get("requirementGroup") for c in all_courses_raw if c.get("requirementGroup")))
+        req_group_ids = list(
+            set(c.get("requirementGroup") for c in all_courses_raw if c.get("requirementGroup"))
+        )
         print(f"  Found {len(req_group_ids)} unique requirementGroups.")
-        
+
         if req_group_ids:
             req_group_data = {}
             batch_size = 50
             for i in range(0, len(req_group_ids), batch_size):
-                batch_ids = req_group_ids[i:i+batch_size]
-                batch_results = await page.evaluate("""
+                batch_ids = req_group_ids[i : i + batch_size]
+                batch_results = await page.evaluate(
+                    """
                     async ({baseUrl, ids}) => {
                         const results = {};
                         const promises = ids.map(async (id) => {
@@ -304,9 +328,11 @@ async def main():
                         await Promise.all(promises);
                         return results;
                     }
-                """, {"baseUrl": "https://app.coursedog.com/api/v1/bmc01", "ids": batch_ids})
+                """,
+                    {"baseUrl": "https://app.coursedog.com/api/v1/bmc01", "ids": batch_ids},
+                )
                 req_group_data.update(batch_results)
-                print(f"  Fetched batch {i} to {i+len(batch_ids)}")
+                print(f"  Fetched batch {i} to {i + len(batch_ids)}")
 
             for i, c in enumerate(courses):
                 rgid = all_courses_raw[i].get("requirementGroup")
@@ -314,12 +340,25 @@ async def main():
                     rg = req_group_data[rgid]
                     if "data" in rg and rgid in rg["data"]:
                         data = rg["data"][rgid]
-                        desc = data.get("descriptionLong") or data.get("catalogDisplayName") or data.get("displayName") or ""
+                        desc = (
+                            data.get("descriptionLong")
+                            or data.get("catalogDisplayName")
+                            or data.get("displayName")
+                            or ""
+                        )
                         if desc:
                             if not c["prerequisites"]:
-                                c["prerequisites"] = [{"name": "Required", "courses": [], "text": desc.strip()}]
+                                c["prerequisites"] = [
+                                    {"name": "Required", "courses": [], "text": desc.strip()}
+                                ]
                             else:
-                                c["prerequisites"].append({"name": "Additional Requirements", "courses": [], "text": desc.strip()})
+                                c["prerequisites"].append(
+                                    {
+                                        "name": "Additional Requirements",
+                                        "courses": [],
+                                        "text": desc.strip(),
+                                    }
+                                )
 
         # ================================================================
         # Phase 2: Fetch ALL programs (basic list)
@@ -332,8 +371,8 @@ async def main():
                 "catalogId": CATALOG_ID,
                 "orderBy": "name",
                 "formatDependents": "false",
-                "columns": "name,programGroupId,programCode,degree,departmentCode,catalogDisplayName,code,departments,departmentOwnership"
-            }
+                "columns": "name,programGroupId,programCode,degree,departmentCode,catalogDisplayName,code,departments,departmentOwnership",
+            },
         )
         print(f"  Total programs fetched: {len(all_programs_raw)}\n")
 
@@ -349,7 +388,7 @@ async def main():
         for i, prog in enumerate(all_programs_raw):
             gid = prog.get("programGroupId", "")
             code = prog.get("code", gid)
-            print(f"  [{i+1}/{len(all_programs_raw)}] {code}...", end=" ", flush=True)
+            print(f"  [{i + 1}/{len(all_programs_raw)}] {code}...", end=" ", flush=True)
 
             detail_url = (
                 f"{BASE_URL}/programs"
@@ -387,9 +426,7 @@ async def main():
                     diploma_desc = val.get("diplomaDescription", "")
 
                     # Extract description from customFields
-                    program_description = find_program_description(
-                        val.get("customFields", {})
-                    )
+                    program_description = find_program_description(val.get("customFields", {}))
 
                     # Extract department from departmentOwnership
                     dept_own = val.get("departmentOwnership", [])
@@ -398,7 +435,7 @@ async def main():
 
                     # Extract completion requirements from requisites
                     reqs_simple = val.get("requisites", {}).get("requisitesSimple", [])
-                    for rs in (reqs_simple or []):
+                    for rs in reqs_simple or []:
                         req_name = rs.get("name", "")
                         req_type = rs.get("type", "")
                         rules_summary = []
@@ -407,18 +444,20 @@ async def main():
                             rule_val = rule.get("value", {})
                             if isinstance(rule_val, dict):
                                 rule_vals = rule_val.get("values", [])
-                                rules_summary.append({
-                                    "condition": cond,
-                                    "values": [str(v) for v in rule_vals[:5]] if rule_vals else []
-                                })
+                                rules_summary.append(
+                                    {
+                                        "condition": cond,
+                                        "values": [str(v) for v in rule_vals[:5]]
+                                        if rule_vals
+                                        else [],
+                                    }
+                                )
                             elif isinstance(rule_val, (int, float, str)):
                                 rules_summary.append({"condition": cond, "value": str(rule_val)})
                         if req_name:
-                            completion_reqs.append({
-                                "name": req_name,
-                                "type": req_type,
-                                "rules": rules_summary
-                            })
+                            completion_reqs.append(
+                                {"name": req_name, "type": req_type, "rules": rules_summary}
+                            )
                     break  # Only need the first version entry
 
             # Extract course/courseSet group IDs from degreeMaps
@@ -432,9 +471,9 @@ async def main():
                     sem_data = {
                         "year": sem.get("year", ""),
                         "semester": sem.get("semester", ""),
-                        "course_group_ids": [],     # numeric IDs to resolve
-                        "literal_courses": [],       # already course codes
-                        "course_set_ids": []
+                        "course_group_ids": [],  # numeric IDs to resolve
+                        "literal_courses": [],  # already course codes
+                        "course_set_ids": [],
                     }
                     for req in sem.get("requirements", []):
                         for rs in req.get("requirementSelect", []):
@@ -461,21 +500,23 @@ async def main():
                                     all_course_set_group_ids.add(v)
                     raw_semesters.append(sem_data)
 
-            programs_with_raw_reqs.append({
-                "name": catalog_name,
-                "programCode": code,
-                "groupId": gid,
-                "degree": degree_designation,
-                "diploma_description": diploma_desc,
-                "department": dept_id,
-                "cipCode": cip_code,
-                "hegisCode": hegis_code,
-                "type": program_type,
-                "long_name": long_name,
-                "description": program_description,
-                "completion_requirements": completion_reqs,
-                "raw_semesters": raw_semesters
-            })
+            programs_with_raw_reqs.append(
+                {
+                    "name": catalog_name,
+                    "programCode": code,
+                    "groupId": gid,
+                    "degree": degree_designation,
+                    "diploma_description": diploma_desc,
+                    "department": dept_id,
+                    "cipCode": cip_code,
+                    "hegisCode": hegis_code,
+                    "type": program_type,
+                    "long_name": long_name,
+                    "description": program_description,
+                    "completion_requirements": completion_reqs,
+                    "raw_semesters": raw_semesters,
+                }
+            )
             print(f"({len(raw_semesters)} semesters)")
 
         # ================================================================
@@ -489,7 +530,7 @@ async def main():
         if unresolved:
             unresolved_list = list(unresolved)
             for chunk_start in range(0, len(unresolved_list), 100):
-                chunk = unresolved_list[chunk_start:chunk_start+100]
+                chunk = unresolved_list[chunk_start : chunk_start + 100]
                 ids_str = ",".join(chunk)
                 url = f"{BASE_URL}/courses?courseGroupIds={ids_str}&catalogId={CATALOG_ID}"
                 result = await fetch_json(page, url)
@@ -507,7 +548,7 @@ async def main():
                             cgid = c.get("courseGroupId", cid)
                             if cgid and ccode:
                                 group_to_code[cgid] = ccode
-                print(f"  Resolved batch {chunk_start}-{chunk_start+len(chunk)}")
+                print(f"  Resolved batch {chunk_start}-{chunk_start + len(chunk)}")
 
         # ================================================================
         # Phase 5: Resolve courseSet group IDs
@@ -517,7 +558,7 @@ async def main():
         if all_course_set_group_ids:
             cs_list = list(all_course_set_group_ids)
             for chunk_start in range(0, len(cs_list), 50):
-                chunk = cs_list[chunk_start:chunk_start+50]
+                chunk = cs_list[chunk_start : chunk_start + 50]
                 ids_param = "&".join(f"courseSetGroupIds[]={csid}" for csid in chunk)
                 url = f"{BASE_URL}/courseSets?{ids_param}&catalogId={CATALOG_ID}"
                 result = await fetch_json(page, url)
@@ -532,11 +573,8 @@ async def main():
                             ccode = group_to_code.get(cg_id, "")
                             if ccode:
                                 cs_courses.append(ccode)
-                        course_set_to_codes[csid] = {
-                            "name": cs_name,
-                            "courses": cs_courses
-                        }
-                print(f"  Resolved batch {chunk_start}-{chunk_start+len(chunk)}")
+                        course_set_to_codes[csid] = {"name": cs_name, "courses": cs_courses}
+                print(f"  Resolved batch {chunk_start}-{chunk_start + len(chunk)}")
 
         # ================================================================
         # Phase 6: Assemble final programs with resolved course codes
@@ -560,15 +598,19 @@ async def main():
 
                 elective_groups = []
                 for csid in sem["course_set_ids"]:
-                    cs_info = course_set_to_codes.get(csid, {"name": f"CourseSet:{csid}", "courses": []})
+                    cs_info = course_set_to_codes.get(
+                        csid, {"name": f"CourseSet:{csid}", "courses": []}
+                    )
                     elective_groups.append(cs_info)
 
-                semesters.append({
-                    "year": sem["year"],
-                    "semester": sem["semester"],
-                    "required_courses": resolved_courses,
-                    "elective_groups": elective_groups
-                })
+                semesters.append(
+                    {
+                        "year": sem["year"],
+                        "semester": sem["semester"],
+                        "required_courses": resolved_courses,
+                        "elective_groups": elective_groups,
+                    }
+                )
 
             del prog["raw_semesters"]
             prog["semesters"] = semesters
@@ -583,13 +625,10 @@ async def main():
         catalog = {
             "catalog_id": CATALOG_ID,
             "institution": "Borough of Manhattan Community College",
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-            "stats": {
-                "total_courses": len(courses),
-                "total_programs": len(programs)
-            },
+            "last_updated": datetime.now(UTC).isoformat(),
+            "stats": {"total_courses": len(courses), "total_programs": len(programs)},
             "courses": courses,
-            "programs": programs
+            "programs": programs,
         }
 
         out_path = "bmcc-catalog.json"
@@ -600,7 +639,9 @@ async def main():
         print(f"  {len(courses)} courses, {len(programs)} programs")
 
         # Stats
-        progs_with_reqs = sum(1 for p in programs if any(s.get("required_courses") for s in p.get("semesters", [])))
+        progs_with_reqs = sum(
+            1 for p in programs if any(s.get("required_courses") for s in p.get("semesters", []))
+        )
         progs_with_desc = sum(1 for p in programs if p.get("description"))
         progs_with_dept = sum(1 for p in programs if p.get("department"))
         progs_with_deg = sum(1 for p in programs if p.get("degree"))
