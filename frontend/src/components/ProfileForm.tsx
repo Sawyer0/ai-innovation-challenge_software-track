@@ -37,16 +37,18 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
     financial_aid_type: null,
   });
 
-  // Re-apply prefill if a new transcript is uploaded after mount
-  useEffect(() => {
-    if (!prefill) return;
+  // Re-apply prefill when a new transcript is uploaded after mount
+  // (adjusting state during render, per react.dev "you might not need an effect").
+  const [appliedPrefill, setAppliedPrefill] = useState(prefill);
+  if (prefill && prefill !== appliedPrefill) {
+    setAppliedPrefill(prefill);
     setProfile((p) => ({
       ...p,
       school: prefill.school ?? p.school,
       program_code: prefill.program_code ?? p.program_code,
       student_type: (prefill.student_type as StudentType) ?? p.student_type,
     }));
-  }, [prefill]);
+  }
 
   useEffect(() => {
     getPrograms()
