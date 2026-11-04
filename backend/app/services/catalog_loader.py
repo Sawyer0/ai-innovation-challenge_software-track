@@ -243,7 +243,7 @@ def load_catalog(json_path: str):
             Base.metadata.tables[tname].drop(bind=engine, checkfirst=True)
     Base.metadata.create_all(bind=engine)
 
-    db: Session = SessionLocal()
+    db: Session = SessionLocal(expire_on_commit=False)
 
     try:
         # Load Courses
