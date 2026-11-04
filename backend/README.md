@@ -57,7 +57,6 @@ All routes are under `/api`. Sessions are anonymous UUIDs.
 | `POST` | `/api/session/{id}/courses/bulk` | Save reviewed transcript courses (skips duplicates) |
 | `DELETE` | `/api/session/{id}/courses/{code}` | Remove a course |
 | `POST` | `/api/session/{id}/transcript` | Parse a transcript PDF/image into `{profile, courses}` (does not save) |
-| `POST` | `/api/session/{id}/upload` | Same as `/transcript` (older route) |
 | `GET` | `/api/session/{id}/advisement/eligible` | Remaining requirements with prerequisites met |
 | `POST` | `/api/session/{id}/advisement` | Guardrails, then an AI course plan |
 | `GET` | `/api/courses/?search=&skip=&limit=` | Search the catalog |
@@ -121,7 +120,7 @@ app/
 ├── services/            use cases: sessions, advisement, prerequisites, catalog import
 ├── repositories/        database access
 ├── academics/           pure rules: semesters, grades, compliance guardrails
-├── parsers/             transcript, DegreeWorks and prerequisite-text parsing
+├── parsers/             transcript (CUNYfirst or DegreeWorks PDF) and prerequisite-text parsing
 ├── prompts/             every LLM prompt
 ├── infrastructure/ai/   LLMProvider interface (Claude, Gemini, Groq) and JSON helpers
 └── scripts/             catalog import and maintenance commands
