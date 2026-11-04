@@ -70,9 +70,7 @@ class FakeGemini(FakeProvider):
 def ai_providers(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     """Replace Claude and Gemini everywhere so no test can reach a real API."""
     claude, gemini = FakeClaude(), FakeGemini()
-    for module in ("app.services.ai_service", "app.parsers.transcript_parser"):
-        monkeypatch.setattr(f"{module}.get_claude_client", lambda: claude)
-        monkeypatch.setattr(f"{module}.get_gemini_client", lambda: gemini)
+    monkeypatch.setattr("app.infrastructure.ai.client.get_claude_client", lambda: claude)
     monkeypatch.setattr("app.infrastructure.ai.client.get_gemini_client", lambda: gemini)
     return SimpleNamespace(claude=claude, gemini=gemini)
 
