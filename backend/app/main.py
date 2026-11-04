@@ -1,49 +1,27 @@
-from datetime import datetime
+"""FastAPI application entry point."""
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
-from . import models  # noqa: F401  (registers tables on Base.metadata)
 from .config import settings
-from .database import Base, SessionLocal, engine
+from .database import engine
+from .routers import advisement, courses, programs, sessions, transcript, upload
+from .services.catalog_loader import initialize_database
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
 
-# Auto-load catalog on startup if empty, then seed policy data
-import os as _os
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    initialize_database()
+    yield
 
-from sqlalchemy import text as _text
 
-from .services.catalog_loader import (
-    load_catalog as _load_catalog,
-)
-from .services.catalog_loader import (
-    load_rules as _load_rules,
-)
-from .services.catalog_loader import (
-    seed_policy_data as _seed_policy_data,
-)
-
-_db = SessionLocal()
-try:
-    _course_count = _db.execute(_text("SELECT COUNT(*) FROM courses")).scalar()
-    if _course_count == 0:
-        _catalog_path = _os.path.join(_os.path.dirname(__file__), "../../data/bmcc-catalog.json")
-        _rules_path = _os.path.join(_os.path.dirname(__file__), "../../data/rules.json")
-        if _os.path.exists(_catalog_path):
-            print("Catalog empty — loading from bmcc-catalog.json...")
-            _load_catalog(_catalog_path)
-            if _os.path.exists(_rules_path):
-                _load_rules(_rules_path)
-        else:
-            _seed_policy_data(_db)
-    else:
-        _seed_policy_data(_db)
-finally:
-    _db.close()
-
-app = FastAPI(title="BMCC AI-Powered Backend")
+app = FastAPI(title="Project DJA API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,53 +33,36 @@ app.add_middleware(
 
 
 @app.get("/")
-def read_root():
-    return {"message": "Welcome to BMCC AI-Powered Backend"}
+def read_root() -> dict[str, str]:
+    return {"message": "Welcome to the Project DJA API"}
 
 
 @app.get("/health")
-def health_check():
-    """
-    Health check endpoint.
-
-    Returns:
-        Status of database connectivity and AI API.
-    """
-    status = {
+def health_check() -> dict[str, Any]:
+    """Report database connectivity and which AI providers have a key configured."""
+    status: dict[str, Any] = {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "database": "unknown",
-        "ai_api": "unknown",
+        "ai_providers": {
+            "claude": settings.has_anthropic_key,
+            "gemini": settings.has_gemini_key,
+        },
     }
 
-    # Check database
     try:
-        from sqlalchemy import text
-
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            conn.commit()
         status["database"] = "connected"
     except Exception as e:
-        status["database"] = f"error: {e!s}"
+        status["database"] = f"error: {e}"
         status["status"] = "degraded"
 
-    # Check AI API
-    try:
-        client = get_ai_client()
-        # Just verify client is initialized
-        status["ai_api"] = "available"
-    except AIError as e:
-        status["ai_api"] = f"error: {e!s}"
-        status["status"] = "degraded"
-    except Exception as e:
-        status["ai_api"] = f"error: {e!s}"
+    if not (settings.has_anthropic_key or settings.has_gemini_key):
         status["status"] = "degraded"
 
     return status
 
-
-from .routers import advisement, courses, programs, sessions, transcript, upload
 
 app.include_router(courses.router)
 app.include_router(programs.router)
