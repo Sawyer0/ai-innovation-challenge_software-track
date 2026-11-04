@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from ..academics import calculate_remaining_credits, get_next_semester
 from ..config import settings
 from ..infrastructure.ai import get_claude_client, get_gemini_client, parse_json_response
 from ..models import StudentProfile
@@ -14,7 +15,6 @@ from ..prompts import (
     ADVISEMENT_USER_PROMPT_TEMPLATE,
 )
 from ..schemas import AdvisementResponse, RecommendedCourse
-from ..utils import calculate_remaining_credits, get_next_semester
 
 logger = logging.getLogger(__name__)
 

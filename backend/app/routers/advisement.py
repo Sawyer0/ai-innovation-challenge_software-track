@@ -2,16 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..dependencies import get_ai_service, get_current_session, get_db, get_prerequisite_service
-from ..dependencies.rate_limit import rate_limit
-from ..services.ai_service import AdvisementGenerationError, AIService
-from ..services.prerequisite_service import PrerequisiteService
-from ..utils import (
+from ..academics import (
     calculate_pell_proration,
     check_financial_aid_compliance,
     check_tap_elective_compliance,
     check_visa_compliance,
 )
+from ..dependencies import get_ai_service, get_current_session, get_db, get_prerequisite_service
+from ..dependencies.rate_limit import rate_limit
+from ..services.ai_service import AdvisementGenerationError, AIService
+from ..services.prerequisite_service import PrerequisiteService
 
 router = APIRouter(prefix="/api/session", tags=["advisement"])
 
