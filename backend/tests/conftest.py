@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
+from app.dependencies.rate_limit import reset_ai_rate_limits
 from app.main import app
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "data" / "bmcc-catalog.json"
@@ -140,6 +141,14 @@ def db():
 
     session.close()
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def _reset_ai_rate_limits():
+    """Per-IP AI limits are process-wide; start every test with a clean window."""
+    reset_ai_rate_limits()
+    yield
+    reset_ai_rate_limits()
 
 
 @pytest.fixture(scope="function")

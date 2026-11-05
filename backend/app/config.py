@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     GROQ_VISION_MODEL: str = "qwen/qwen3.8-27b"
     APP_ENV: str = "development"
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # Per-client-IP limits on the endpoints that call an LLM (advisement, transcript).
+    AI_RATE_LIMIT_PER_MINUTE: int = 5
+    AI_RATE_LIMIT_PER_HOUR: int = 30
+    # Read the client IP from X-Real-IP / X-Forwarded-For. Only enable behind a proxy
+    # that sets these headers itself (Vercel does); otherwise clients can spoof them.
+    TRUST_PROXY_HEADERS: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
