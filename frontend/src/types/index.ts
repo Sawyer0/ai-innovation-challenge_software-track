@@ -91,6 +91,8 @@ export type ComplianceViolationType =
 
 export interface ComplianceViolation {
   type: ComplianceViolationType;
+  /** "plan" when the AI's recommended plan failed; absent when courses you planned failed. */
+  stage?: "plan";
   aid_type?: string;
   student_type?: string;
   planned_credits: number;
