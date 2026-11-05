@@ -2,7 +2,13 @@ import { useEffect, useState, useCallback } from "react";
 import Intake from "./pages/Intake";
 import Results from "./pages/Results";
 import ComplianceAlert from "./components/ComplianceAlert";
-import { createSession, setProfile, getAdvisement, ComplianceError } from "./api/client";
+import {
+  createSession,
+  setProfile,
+  getAdvisement,
+  ComplianceError,
+  API_DOCS_URL,
+} from "./api/client";
 import type { AdvisementResponse, ComplianceViolation, StudentProfile, TranscriptProfileHints, ParsedCourse } from "./types";
 
 type AppState = "intake" | "loading" | "results";
@@ -117,7 +123,7 @@ export default function App() {
           </div>
           <nav className="app-header__nav">
             <a
-              href="http://localhost:8000/docs"
+              href={API_DOCS_URL}
               target="_blank"
               rel="noreferrer"
             >

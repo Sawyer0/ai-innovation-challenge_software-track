@@ -7,7 +7,15 @@ import type {
   TranscriptParseResult,
 } from "../types";
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// Production builds call the API on the same origin (Vercel routes /api/* to the
+// backend function). In dev the backend runs on :8000 unless VITE_API_URL says otherwise.
+const BASE_URL =
+  import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:8000" : "");
+
+// FastAPI serves its docs at /docs locally and under /api/docs in production.
+export const API_DOCS_URL = import.meta.env.DEV
+  ? `${BASE_URL}/docs`
+  : `${BASE_URL}/api/docs`;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

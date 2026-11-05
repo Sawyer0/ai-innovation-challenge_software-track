@@ -27,7 +27,17 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="Project DJA API", lifespan=lifespan)
+# In production the API shares an origin with the frontend and only /api/* reaches it,
+# so the interactive docs move under /api as well.
+_DOCS_PREFIX = "/api" if settings.APP_ENV == "production" else ""
+
+app = FastAPI(
+    title="Project DJA API",
+    lifespan=lifespan,
+    docs_url=f"{_DOCS_PREFIX}/docs",
+    redoc_url=f"{_DOCS_PREFIX}/redoc",
+    openapi_url=f"{_DOCS_PREFIX}/openapi.json",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +54,7 @@ def read_root() -> dict[str, str]:
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check() -> dict[str, Any]:
     """Report database connectivity and which AI providers have a key configured."""
     status: dict[str, Any] = {
