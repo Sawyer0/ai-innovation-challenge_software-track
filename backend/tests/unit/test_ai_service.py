@@ -57,7 +57,8 @@ class TestGenerateAdvisement:
         result = await _advise(AIService(), mock_profile)
 
         assert result.next_semester == "Fall 2026"
-        assert result.compliance_cleared is True
+        # Only the router clears a plan, after the deterministic checks pass.
+        assert result.compliance_cleared is False
         assert [c.course_code for c in result.recommended_courses] == ["MAT 206"]
         assert result.recommended_courses[0].credits == 4.0
         assert ai_providers.fallback.calls == []

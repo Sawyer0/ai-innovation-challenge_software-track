@@ -18,6 +18,53 @@ from ..services.prerequisite_service import PrerequisiteService
 router = APIRouter(prefix="/api/session", tags=["advisement"])
 
 
+def _plan_violations(
+    profile: models.StudentProfile,
+    response: schemas.AdvisementResponse,
+    db: Session,
+) -> dict | None:
+    """Re-run the credit and visa guardrails on the plan the AI actually returned.
+
+    The pre-AI checks only see courses the student already planned (often none),
+    so a plan the AI under-fills has to be checked here. Returns the 422 detail
+    for the first failing plan, or None when the plan complies.
+    """
+    credits = sum(c.credits for c in response.recommended_courses)
+    codes = [c.course_code for c in response.recommended_courses]
+    messages: list[str] = []
+
+    aid_ok, aid_message = check_financial_aid_compliance(
+        financial_aid_type=profile.financial_aid_type,
+        planned_credits=credits,
+        enrollment_status=profile.enrollment_status,
+        db=db,
+        allow_empty_plan=False,
+    )
+    if not aid_ok and aid_message:
+        messages.append(aid_message)
+
+    visa_ok, visa_message = check_visa_compliance(
+        student_type=profile.student_type,
+        planned_credits=credits,
+        planned_course_codes=codes,
+        db=db,
+        allow_empty_plan=False,
+    )
+    if not visa_ok and visa_message:
+        messages.append(visa_message)
+
+    if not messages:
+        return None
+    return {
+        "type": "compliance_violation" if not aid_ok else "visa_compliance_violation",
+        "stage": "plan",
+        "aid_type": profile.financial_aid_type,
+        "student_type": profile.student_type,
+        "planned_credits": credits,
+        "message": " ".join(messages),
+    }
+
+
 def _satisfied_course_codes(session: models.StudentSession) -> list[str]:
     """Completed and in-progress courses both count toward prerequisites."""
     return sorted(
@@ -140,22 +187,41 @@ async def advisement(
             "No financial aid or visa constraints — recommend a standard full-time load (12–15 credits)."
         )
 
-    try:
-        response = await ai_service.generate_advisement(
-            profile=profile,
-            completed_courses=completed_courses,
-            in_progress_courses=in_progress_courses,
-            planned_courses=planned_course_codes,
-            available_courses=available_courses,
-            warnings=warnings,
-            current_planned_credits=current_planned_credits,
-            db=db,
-            student_message=chat_msg.message,
+    async def generate(extra_warnings: list[str]) -> schemas.AdvisementResponse:
+        try:
+            return await ai_service.generate_advisement(
+                profile=profile,
+                completed_courses=completed_courses,
+                in_progress_courses=in_progress_courses,
+                planned_courses=planned_course_codes,
+                available_courses=available_courses,
+                warnings=warnings + extra_warnings,
+                current_planned_credits=current_planned_credits,
+                db=db,
+                student_message=chat_msg.message,
+            )
+        except NoProviderConfiguredError as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        except AdvisementGenerationError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    response = await generate([])
+
+    # --- Plan guardrail (deterministic, runs after AI) ---
+    # The AI is told the minimums but can still under-fill the plan. Give it one
+    # corrective pass with the exact shortfall, then refuse a plan that still fails.
+    violation = _plan_violations(profile, response, db)
+    if violation:
+        response = await generate(
+            [
+                f"REJECTED: your previous plan failed compliance. {violation['message']} "
+                "Recommend a plan that meets every minimum."
+            ]
         )
-    except NoProviderConfiguredError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-    except AdvisementGenerationError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
+        violation = _plan_violations(profile, response, db)
+    if violation:
+        raise HTTPException(status_code=422, detail=violation)
+    response.compliance_cleared = True
 
     # --- TAP elective check (post-AI annotation, not a hard block) ---
     check_tap_elective_compliance(

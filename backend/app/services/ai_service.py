@@ -42,7 +42,8 @@ def _parse_advisement(
     return AdvisementResponse(
         next_semester=next_semester,
         total_planned_credits=planned_credits,
-        compliance_cleared=True,
+        # The router sets this only after the plan passes the deterministic checks.
+        compliance_cleared=False,
         advisor_message=raw.get("advisor_message", ""),
         recommended_courses=courses,
     )

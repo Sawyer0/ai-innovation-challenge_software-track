@@ -36,45 +36,75 @@ def calculate_remaining_credits(
     return max(0, remaining)  # Don't return negative
 
 
+_AID_LABELS = {
+    "pell": "the Pell Grant",
+    "tap": "TAP",
+    "both": "Pell and TAP",
+    "excelsior": "the Excelsior Scholarship",
+    "loans": "federal student loans",
+}
+
+
+def _format_credits(credits: float) -> str:
+    return f"{credits:g}"
+
+
 def check_financial_aid_compliance(
     financial_aid_type: str | None,
     planned_credits: float,
     enrollment_status: str | None,
     db: Session,
+    *,
+    allow_empty_plan: bool = True,
 ) -> tuple[bool, str | None]:
     """
-    Check if a student's planned enrollment complies with financial aid requirements.
+    Check if a student's planned enrollment meets the minimum credits of their aid.
+
+    The minimum comes from the FinancialAidConstraint row for the aid type
+    (data/rules.json). Constraints with block_underload=False only advise, so they
+    never fail the check.
 
     Args:
-        financial_aid_type: Type of aid (pell, tap, etc.) or None
-        planned_credits: Total credits planned for semester
+        financial_aid_type: Type of aid (pell, tap, both, ...) or None
+        planned_credits: Total credits planned for the semester
         enrollment_status: Current enrollment status
         db: Database session
+        allow_empty_plan: When True, a plan with 0 credits passes. That is the
+            pre-AI case, where the student has not planned anything yet. Pass
+            False to check a finished plan, where 0 credits is a shortfall.
 
     Returns:
-        Tuple of (is_compliant, warning_message)
+        Tuple of (is_compliant, violation_message)
     """
     if not financial_aid_type:
         return True, None
 
+    aid_type = financial_aid_type.strip().lower()
     constraint = (
         db.query(models.FinancialAidConstraint)
-        .filter(models.FinancialAidConstraint.aid_type == financial_aid_type)
+        .filter(models.FinancialAidConstraint.aid_type == aid_type)
         .first()
     )
 
-    if not constraint:
+    if not constraint or not constraint.min_credits_required:
         return True, None
 
-    min_credits = float(constraint.min_credits_required) if constraint.min_credits_required else 0
+    if constraint.block_underload is False:
+        return True, None
 
-    # Only block when the student has already planned courses that fall short.
-    # planned_credits == 0 means the AI hasn't recommended anything yet — let it proceed.
-    if planned_credits > 0 and planned_credits < min_credits:
-        return (
-            False,
-            constraint.warning_message or f"Need {min_credits} credits for {financial_aid_type}",
+    min_credits = float(constraint.min_credits_required)
+    if planned_credits == 0 and allow_empty_plan:
+        return True, None
+
+    if planned_credits < min_credits:
+        label = _AID_LABELS.get(aid_type, aid_type.upper())
+        message = (
+            f"This plan has {_format_credits(planned_credits)} credits, but {label} "
+            f"requires at least {_format_credits(min_credits)} credits per semester."
         )
+        if constraint.warning_message:
+            message = f"{message} {constraint.warning_message}"
+        return False, message
 
     return True, None
 
@@ -243,6 +273,8 @@ def check_visa_compliance(
     planned_credits: float,
     planned_course_codes: list,
     db: Session,
+    *,
+    allow_empty_plan: bool = True,
 ) -> tuple[bool, str | None]:
     """
     Enforce F-1 visa rules for international students (deterministic, pre-AI).
@@ -250,6 +282,7 @@ def check_visa_compliance(
     Rules per USCIS / ICE regulations:
       - Must carry ≥12 credits (full-time)
       - May count at most 1 online/hybrid course toward the full-time requirement
+    allow_empty_plan has the same meaning as in check_financial_aid_compliance.
     Returns (is_compliant, violation_message).
     """
     if not student_type or student_type.lower() != "international":
@@ -257,12 +290,12 @@ def check_visa_compliance(
 
     violations = []
 
-    # Only flag credit shortfall when the student has actually planned courses.
-    # planned_credits == 0 means the AI hasn't recommended a schedule yet.
-    if planned_credits > 0 and planned_credits < _F1_MIN_CREDITS:
+    # Before the AI runs, 0 planned credits just means nothing is planned yet.
+    short = planned_credits < _F1_MIN_CREDITS and not (planned_credits == 0 and allow_empty_plan)
+    if short:
         violations.append(
             f"F-1 visa requires full-time enrollment of at least {_F1_MIN_CREDITS} credits. "
-            f"Your current plan has {planned_credits} credits. "
+            f"Your current plan has {_format_credits(planned_credits)} credits. "
             f"Dropping below {_F1_MIN_CREDITS} credits may result in visa status violation. "
             "Please add more courses or speak with the International Student Office before registering."
         )
