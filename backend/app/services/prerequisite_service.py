@@ -33,7 +33,11 @@ class PrerequisiteService:
             groups.setdefault(p.logic_group, []).append(p.prerequisite_course_code)
 
         for course_options in groups.values():
-            if not any(c in completed_courses for c in course_options):
+            # Entries without a course code are placement or proficiency notes (e.g.
+            # "English Proficiency Index 55+"). DJA doesn't track those, so they inform
+            # the student but don't block the course.
+            codes = [c for c in course_options if c]
+            if codes and not any(c in completed_courses for c in codes):
                 return False
 
         return True
@@ -76,15 +80,15 @@ class PrerequisiteService:
         missing = []
 
         for _logic_group, prereq_list in groups.items():
+            # Placement/proficiency entries have no course code; see check_prerequisites.
+            prereq_list = [p for p in prereq_list if p.prerequisite_course_code]
+            if not prereq_list:
+                continue
             group_satisfied = False
             group_requirements = []
 
             for p in prereq_list:
-                prereq_code = (
-                    p.prerequisite_course_code.upper().replace(" ", "")
-                    if p.prerequisite_course_code
-                    else ""
-                )
+                prereq_code = (p.prerequisite_course_code or "").upper().replace(" ", "")
                 min_grade = p.minimum_grade or "C"
 
                 group_requirements.append(f"{p.prerequisite_course_code} (min {min_grade})")
