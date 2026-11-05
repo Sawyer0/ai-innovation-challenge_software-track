@@ -19,8 +19,13 @@ export default function Results({ result, onStartOver }: Props) {
         <div>
           <h1>Your Plan for {result.next_semester}</h1>
           <p className="results-meta">
-            {result.total_planned_credits} planned credits ·{" "}
-            <span className="compliance-cleared">✓ Compliance cleared</span>
+            {result.total_planned_credits} planned credits
+            {result.compliance_cleared && (
+              <>
+                {" · "}
+                <span className="compliance-cleared">✓ Compliance cleared</span>
+              </>
+            )}
           </p>
         </div>
         <button className="btn-secondary" onClick={onStartOver}>

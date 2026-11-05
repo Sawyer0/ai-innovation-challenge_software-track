@@ -19,7 +19,7 @@ export default function ComplianceAlert({ violation, onDismiss }: Props) {
       </div>
       <p className="compliance-alert__message">{violation.message}</p>
       <div className="compliance-alert__meta">
-        <span>Planned credits: <strong>{violation.planned_credits}</strong></span>
+        <span>{violation.stage === "plan" ? "Recommended credits" : "Planned credits"}: <strong>{violation.planned_credits}</strong></span>
         {violation.aid_type && (
           <span>Aid type: <strong>{violation.aid_type.toUpperCase()}</strong></span>
         )}
@@ -28,7 +28,9 @@ export default function ComplianceAlert({ violation, onDismiss }: Props) {
         )}
       </div>
       <p className="compliance-alert__note">
-        Please adjust your planned courses to meet the requirements, then try again.
+        {violation.stage === "plan"
+          ? "The recommended plan did not meet these requirements, so it was not shown. Submit again for a new plan, or add courses you already intend to take."
+          : "Please adjust your planned courses to meet the requirements, then try again."}{" "}
         Speak with your advisor or the International Student Office if you need an exception.
       </p>
       <button className="btn-secondary" onClick={onDismiss}>← Adjust My Profile</button>
