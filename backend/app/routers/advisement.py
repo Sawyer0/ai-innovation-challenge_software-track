@@ -12,7 +12,7 @@ from ..academics import (
 )
 from ..database import get_db
 from ..dependencies import get_ai_service, get_current_session, get_prerequisite_service
-from ..dependencies.rate_limit import rate_limit
+from ..dependencies.rate_limit import ai_rate_limit, rate_limit
 from ..infrastructure.ai import NoProviderConfiguredError
 from ..services.ai_service import AdvisementGenerationError, AIService
 from ..services.prerequisite_service import PrerequisiteService
@@ -113,6 +113,7 @@ async def advisement(
     ai_service: AIService = Depends(get_ai_service),
     db: Session = Depends(get_db),
     _: None = Depends(rate_limit),
+    __: None = Depends(ai_rate_limit),
 ):
     profile = session.profile
     if not profile:

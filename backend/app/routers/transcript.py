@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from ..dependencies import get_current_session, get_parser_service
+from ..dependencies.rate_limit import ai_rate_limit
 from ..infrastructure.ai import NoProviderConfiguredError
 from ..models import StudentSession
 from ..parsers.transcript_parser import TranscriptParsingError
@@ -14,6 +15,7 @@ async def upload_transcript(
     file: UploadFile = File(...),
     session: StudentSession = Depends(get_current_session),
     parser_service: ParserService = Depends(get_parser_service),
+    _: None = Depends(ai_rate_limit),
 ):
     """Parse an uploaded transcript (PDF or image) into {profile, courses} for review."""
     try:
