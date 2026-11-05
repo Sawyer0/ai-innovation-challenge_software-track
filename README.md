@@ -5,6 +5,8 @@
 An AI academic advisor for BMCC/CUNY students that checks a course plan against
 visa and financial-aid rules **before** it asks an LLM for recommendations.
 
+**Live demo: [project-dja.vercel.app](https://project-dja.vercel.app)**
+
 Project DJA was built in two days by a three-person student team for the
 **AI Innovation Challenge (AI Software / Agentic AI track)**, a CUNY hackathon hosted
 by the BMCC Technology Learning Community and BMCC Tech Innovation Hub. It is a
@@ -149,6 +151,24 @@ pytest                                  # unit, integration, e2e and catalog dat
 Tests use an in-memory database and fake LLM providers, so they need no keys and make
 no network calls. CI (`.github/workflows/ci.yml`) runs the same checks plus the
 frontend's `npm run lint` and `npm run build` on every pull request.
+
+## Deployment
+
+The repo deploys to Vercel as one project (`vercel.json`): the Vite build is served
+as static files, and `api/index.py` runs the FastAPI app as a Python function that
+receives every `/api/*` request. The frontend calls the API on the same origin.
+
+- **Env vars:** `GROQ_API_KEY` (or another provider key) in the Vercel project
+  settings. Nothing secret lives in the repo.
+- **Database:** the function's filesystem is read-only except `/tmp`, so each
+  instance copies the pre-built catalog database `backend/data/catalog.sqlite` to
+  `/tmp` on cold start. Rebuild it with `python backend/scripts/build_catalog_db.py`
+  after changing the catalog, `rules.json` or the models (a test checks it is in sync).
+- **Sessions are ephemeral** in the deployed demo: they live in that instance's `/tmp`
+  and disappear when it is recycled, and two instances don't share them.
+- **Abuse limits:** advisement and transcript upload are limited per IP (5/minute,
+  30/hour by default) on top of the per-session limit; CORS allows only the
+  deployment's own origins.
 
 ## Known limitations
 

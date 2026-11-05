@@ -36,6 +36,9 @@ All settings come from environment variables or `backend/.env` (gitignored). See
 | `CLAUDE_MODEL` / `GEMINI_MODEL` | `claude-sonnet-4-6` / `gemini-2.5-flash` | |
 | `DATABASE_URL` | `sqlite:///./bmcc_catalog.db` | |
 | `CORS_ORIGINS` | `["http://localhost:3000","http://localhost:5173"]` | |
+| `APP_ENV` | `development` | `production` moves the API docs to `/api/docs` |
+| `AI_RATE_LIMIT_PER_MINUTE` / `AI_RATE_LIMIT_PER_HOUR` | `5` / `30` | Per-IP limits on advisement and transcript |
+| `TRUST_PROXY_HEADERS` | `false` | Read the client IP from `X-Real-IP` / `X-Forwarded-For` (only behind a proxy that sets them) |
 
 Providers with a key are tried in order Claude → Gemini → Groq; if one fails or returns
 malformed JSON the next is used. Groq receives PDFs as their extracted text, since its
