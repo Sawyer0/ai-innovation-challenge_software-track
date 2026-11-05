@@ -215,3 +215,42 @@ class TestRemainingRequirements:
 
         # Assert
         assert result == []
+
+
+def _prereq(code: str | None, group: int = 1, is_attribute: bool = False) -> Mock:
+    prereq = Mock()
+    prereq.prerequisite_course_code = code
+    prereq.logic_group = group
+    prereq.is_corequisite = False
+    prereq.is_attribute = is_attribute
+    prereq.minimum_grade = None
+    return prereq
+
+
+@pytest.mark.unit
+class TestUncodedPrerequisites:
+    """Placement/proficiency notes have no course code and must not block a course."""
+
+    def test_proficiency_attribute_does_not_block(self, mock_repos):
+        service = PrerequisiteService(*mock_repos)
+        service.get_prerequisites = Mock(return_value=[_prereq(None, is_attribute=True)])
+
+        assert service.check_prerequisites("CSC 101", []) is True
+        assert service.check_prerequisites_with_grades("CSC 101", []) == (True, [])
+
+    def test_coded_group_still_required_alongside_note(self, mock_repos):
+        service = PrerequisiteService(*mock_repos)
+        service.get_prerequisites = Mock(return_value=[_prereq(None, 1), _prereq("MAT 157", 2)])
+
+        assert service.check_prerequisites("MAT 206", []) is False
+        assert service.check_prerequisites("MAT 206", ["MAT 157"]) is True
+
+    def test_new_student_gets_intro_courses(self, mock_repos):
+        program_repo, course_repo = mock_repos
+        requirement = Mock()
+        requirement.course_code = "ENG 101"
+        program_repo.get_by_code.return_value = Mock(requirements=[requirement])
+        service = PrerequisiteService(program_repo, course_repo)
+        service.get_prerequisites = Mock(return_value=[_prereq(None, is_attribute=True)])
+
+        assert service.get_eligible_courses("CSC-AS", []) == ["ENG 101"]
