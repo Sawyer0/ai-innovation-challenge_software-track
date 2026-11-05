@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -15,7 +17,17 @@ from ..infrastructure.ai import NoProviderConfiguredError
 from ..services.ai_service import AdvisementGenerationError, AIService
 from ..services.prerequisite_service import PrerequisiteService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/session", tags=["advisement"])
+
+
+def _use_catalog_credits(response: schemas.AdvisementResponse, db: Session) -> None:
+    """Replace the AI's credit counts with the catalog's, so the checks see real numbers."""
+    for course in response.recommended_courses:
+        row = db.query(models.Course).filter(models.Course.code == course.course_code).first()
+        if row is not None and row.credits:
+            course.credits = float(row.credits)
 
 
 def _plan_violations(
@@ -29,6 +41,7 @@ def _plan_violations(
     so a plan the AI under-fills has to be checked here. Returns the 422 detail
     for the first failing plan, or None when the plan complies.
     """
+    _use_catalog_credits(response, db)
     credits = sum(c.credits for c in response.recommended_courses)
     codes = [c.course_code for c in response.recommended_courses]
     messages: list[str] = []
@@ -128,7 +141,10 @@ async def advisement(
     available_courses = []
     for code in eligible_codes:
         course_db = db.query(models.Course).filter(models.Course.code == code).first()
-        available_courses.append({"code": code, "title": course_db.title if course_db else code})
+        entry = {"code": code, "title": course_db.title if course_db else code}
+        if course_db is not None and course_db.credits:
+            entry["credits"] = f"{float(course_db.credits):g}"
+        available_courses.append(entry)
 
     # --- Compliance Guardrail (deterministic, runs before AI) ---
     is_compliant, compliance_warning = check_financial_aid_compliance(
@@ -212,6 +228,9 @@ async def advisement(
     # corrective pass with the exact shortfall, then refuse a plan that still fails.
     violation = _plan_violations(profile, response, db)
     if violation:
+        logger.warning(
+            "Recommended plan failed compliance, retrying once: %s", violation["message"]
+        )
         response = await generate(
             [
                 f"REJECTED: your previous plan failed compliance. {violation['message']} "
@@ -220,6 +239,7 @@ async def advisement(
         )
         violation = _plan_violations(profile, response, db)
     if violation:
+        logger.warning("Recommended plan still failed compliance after retry")
         raise HTTPException(status_code=422, detail=violation)
     response.compliance_cleared = True
 
