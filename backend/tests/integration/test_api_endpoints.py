@@ -447,6 +447,19 @@ class TestRecommendedPlanMinimums:
         assert response.json()["total_planned_credits"] == 12.0
         assert response.json()["compliance_cleared"] is True
 
+    def test_credits_come_from_the_catalog_not_the_ai(self, client, db, ai_providers):
+        """The AI claims MAT 157 is 5 credits; the catalog says 4, so the plan is 11."""
+        db.add(models.Course(code="MAT 157", title="College Algebra", credits=4))
+        db.commit()
+        claimed = (("ENG 101", 3), ("MAT 157", 5), ("CSC 101", 4))
+        ai_providers.primary.queue(_plan(*claimed), _plan(*claimed))
+        session_id = _session_with_profile(client, financial_aid_type="tap")
+
+        response = client.post(f"/api/session/{session_id}/advisement", json={"message": "?"})
+
+        assert response.status_code == 422
+        assert response.json()["detail"]["planned_credits"] == 11.0
+
     def test_tap_and_f1_shortfalls_are_both_reported(self, client, ai_providers):
         ai_providers.primary.queue(_plan(*ELEVEN), _plan(*ELEVEN))
         session_id = _session_with_profile(

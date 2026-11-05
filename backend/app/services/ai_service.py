@@ -89,7 +89,11 @@ class AIService:
             in_progress_courses=", ".join(in_progress_courses) if in_progress_courses else "None",
             planned_courses=", ".join(planned_courses) if planned_courses else "None",
             available_courses="\n".join(
-                [f"- {c['code']}: {c['title']}" for c in available_courses]
+                [
+                    f"- {c['code']}: {c['title']}"
+                    + (f" ({c['credits']} credits)" if c.get("credits") else "")
+                    for c in available_courses
+                ]
             ),
             next_semester=next_semester,
             remaining_credits=remaining_credits,
