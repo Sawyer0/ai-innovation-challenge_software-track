@@ -108,7 +108,7 @@ def db():
             min_credits_required=6,
             min_status_required="half-time",
             warning_message="Dropping below 6 credits may affect your Pell Grant eligibility.",
-            block_underload=False,
+            block_underload=True,
             allow_exception_process=False,
         ),
         models.FinancialAidConstraint(
@@ -116,10 +116,21 @@ def db():
             min_credits_required=12,
             min_status_required="full-time",
             warning_message="TAP requires full-time enrollment (12+ credits).",
-            block_underload=False,
+            block_underload=True,
             allow_exception_process=False,
         ),
     ]
+    # Mirrors data/rules.json: Pell and TAP block an underload, Excelsior only advises.
+    aid_constraints.append(
+        models.FinancialAidConstraint(
+            aid_type="excelsior",
+            min_credits_required=15,
+            min_status_required="full-time",
+            warning_message="Excelsior recommends 15 credits per semester.",
+            block_underload=False,
+            allow_exception_process=True,
+        )
+    )
     for constraint in aid_constraints:
         session.add(constraint)
 

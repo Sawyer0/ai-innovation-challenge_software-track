@@ -386,6 +386,80 @@ class TestComplianceGuardrails:
         assert proration["percentage_display"] == "75%"
 
 
+ELEVEN = (("ENG 101", 3), ("MAT 157", 4), ("CSC 101", 4))
+TWELVE = (("ENG 101", 3), ("MAT 157", 4), ("CSC 101", 4), ("SPE 100", 1))
+
+
+@pytest.mark.integration
+class TestRecommendedPlanMinimums:
+    """The AI's own plan is re-checked: an 11-credit plan never comes back cleared."""
+
+    @pytest.mark.parametrize(
+        ("profile", "violation_type", "rule_text"),
+        [
+            ({"financial_aid_type": "tap"}, "compliance_violation", "TAP requires at least 12"),
+            (
+                {"student_type": "international"},
+                "visa_compliance_violation",
+                "F-1 visa requires full-time enrollment of at least 12",
+            ),
+        ],
+    )
+    def test_eleven_credit_plan_is_rejected_after_one_retry(
+        self, client, ai_providers, profile, violation_type, rule_text
+    ):
+        ai_providers.primary.queue(_plan(*ELEVEN), _plan(*ELEVEN))
+        session_id = _session_with_profile(client, **profile)
+
+        response = client.post(f"/api/session/{session_id}/advisement", json={"message": "?"})
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert detail["type"] == violation_type
+        assert detail["stage"] == "plan"
+        assert detail["planned_credits"] == 11.0
+        assert rule_text in detail["message"]
+        assert len(ai_providers.primary.calls) == 2
+        assert "REJECTED" in ai_providers.primary.calls[1]["prompt"]
+
+    @pytest.mark.parametrize(
+        "profile", [{"financial_aid_type": "tap"}, {"student_type": "international"}]
+    )
+    def test_twelve_credit_plan_is_cleared(self, client, ai_providers, profile):
+        ai_providers.primary.queue(_plan(*TWELVE))
+        session_id = _session_with_profile(client, **profile)
+
+        response = client.post(f"/api/session/{session_id}/advisement", json={"message": "?"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["compliance_cleared"] is True
+        assert data["total_planned_credits"] == 12.0
+        assert len(ai_providers.primary.calls) == 1
+
+    def test_short_plan_corrected_on_retry_is_cleared(self, client, ai_providers):
+        ai_providers.primary.queue(_plan(*ELEVEN), _plan(*TWELVE))
+        session_id = _session_with_profile(client, financial_aid_type="tap")
+
+        response = client.post(f"/api/session/{session_id}/advisement", json={"message": "?"})
+
+        assert response.status_code == 200
+        assert response.json()["total_planned_credits"] == 12.0
+        assert response.json()["compliance_cleared"] is True
+
+    def test_tap_and_f1_shortfalls_are_both_reported(self, client, ai_providers):
+        ai_providers.primary.queue(_plan(*ELEVEN), _plan(*ELEVEN))
+        session_id = _session_with_profile(
+            client, financial_aid_type="tap", student_type="international"
+        )
+
+        response = client.post(f"/api/session/{session_id}/advisement", json={"message": "?"})
+
+        message = response.json()["detail"]["message"]
+        assert "TAP requires at least 12" in message
+        assert "F-1 visa" in message
+
+
 @pytest.mark.integration
 class TestTranscriptEndpoints:
     """Transcript upload: AI parses, the student reviews, then courses are bulk-saved."""
