@@ -1,3 +1,13 @@
-# Python dependencies for the Vercel function (api/index.py). The backend's own list
-# is the source of truth.
--r backend/requirements.txt
+# Python dependencies for the Vercel function (api/index.py).
+# Vercel can't parse "-r" includes, so this mirrors backend/requirements.txt minus the
+# local dev server (uvicorn); a test keeps the two lists in sync.
+fastapi>=0.109.0
+sqlalchemy>=2.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+anthropic>=0.40.0
+google-genai>=0.1.0
+httpx>=0.26.0
+pypdf>=4.0.0
