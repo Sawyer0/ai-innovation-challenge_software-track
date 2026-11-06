@@ -33,7 +33,7 @@ a block.
 React intake form ──► FastAPI
                        │
   transcript upload ──►│ LLM reads a PDF or screenshot → courses + profile hints
-                       │ (student reviews them, then they are saved to the session)
+                       │ (identifiers redacted first; student reviews the result)
                        │
   "What should I take?"│
                        ▼
@@ -165,12 +165,36 @@ receives every `/api/*` request. The frontend calls the API on the same origin.
   `/tmp` on cold start. Rebuild it with `python backend/scripts/build_catalog_db.py`
   after changing the catalog, `rules.json` or the models (a test checks it is in sync).
 - **Sessions are ephemeral** in the deployed demo: they live in that instance's `/tmp`
-  and disappear when it is recycled, and two instances don't share them.
+  and disappear when it is recycled, and two instances don't share them. The app
+  doesn't depend on them: transcript parsing stores nothing, the browser keeps the
+  parsed courses and sends them with its profile in the advisement request, and an
+  instance that doesn't know a (well-formed) session id recreates it. The frontend
+  also starts a new session and retries once if the API ever answers
+  "Session not found".
 - **Abuse limits:** advisement and transcript upload are limited per IP (5/minute,
   30/hour by default) on top of the per-session limit, with a demo-wide cap of 500
   AI requests per 24 hours (`AI_DAILY_LIMIT`) to bound provider spend. The page shows
   visitors how many requests they have left. The counts live in memory per function
   instance, so they are best-effort; CORS allows only the deployment's own origins.
+
+## Privacy
+
+Advising needs courses, grades and the program, not who the student is, so personal
+identifiers are removed before a transcript reaches any AI provider
+(`app/infrastructure/ai/redaction.py`):
+
+- **PDFs with a text layer** (CUNYfirst exports): labelled header fields (name,
+  student ID/EMPLID, birthdate, address, email, phone) and recognisable identifiers
+  anywhere (emails, phone numbers, SSNs, 8-digit IDs, city/state/ZIP lines, the
+  name repeated in footers) are replaced with `[REDACTED]` before the text is sent.
+  When a page has to be sent as an image instead, the same identifiers are located
+  in its text layer and blacked out on the rendered page. PDFs are never sent as
+  files, whichever provider is configured.
+- **Scans and screenshots** have no text layer, and the app does no OCR, so
+  identifiers on them can't be located and the image is sent as uploaded.
+- **Every path:** the prompt tells the model not to read out identifiers, the
+  response keeps only program and course fields (anything else the model returns is
+  dropped), and transcript contents are never logged.
 
 ## Known limitations
 
@@ -179,6 +203,7 @@ receives every `/api/*` request. The frontend calls the API on the same origin.
 - Online/hybrid status comes from the catalog's course-level instruction mode, not
   from actual section schedules.
 - Sessions are anonymous and stored in SQLite; there is no authentication.
+- Identifiers on scanned PDFs and screenshots are not redacted (see Privacy).
 
 ## Team
 
