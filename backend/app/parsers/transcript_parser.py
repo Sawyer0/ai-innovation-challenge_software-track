@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import logging
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -53,6 +54,42 @@ class TranscriptParsingError(RuntimeError):
         self.retry_after = retry_after
 
 
+_SEMESTER = re.compile(
+    r"^\s*(?:(\d{4})\s+(fall|spring|summer|winter)|(fall|spring|summer|winter)\s+(\d{4}))"
+    r"(?:\s+term)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_semester(value: Any) -> Any:
+    """'2026 Fall Term' / 'FALL 2026' -> 'Fall 2026'; anything else is left alone."""
+    if not isinstance(value, str):
+        return value
+    match = _SEMESTER.match(value)
+    if not match:
+        return value
+    year = match.group(1) or match.group(4)
+    term = match.group(2) or match.group(3)
+    return f"{term.capitalize()} {year}"
+
+
+def _normalize_course(course: dict[str, Any]) -> dict[str, Any]:
+    """Treat a course with no grade as in progress (CUNYfirst lists current-term
+    courses with no grade and 0 earned credits); its credits then aren't known yet."""
+    grade = course.get("grade")
+    grade = grade.strip() if isinstance(grade, str) else grade
+    if not grade or (isinstance(grade, str) and grade.upper() == "IP"):
+        grade = None
+    course["grade"] = grade
+    course["semester_taken"] = _normalize_semester(course.get("semester_taken"))
+    status = course.get("status")
+    if status != "withdrawn" and grade is None:
+        course["status"] = "in-progress"
+    if course.get("status") == "in-progress" and not course.get("credits"):
+        course["credits"] = None  # filled from the catalog by ParserService
+    return course
+
+
 def _normalize_result(raw: Any) -> dict[str, Any]:
     """
     Normalize the AI response into {profile, courses}.
@@ -74,7 +111,7 @@ def _normalize_result(raw: Any) -> dict[str, Any]:
 
     return {
         "profile": profile,
-        "courses": courses,
+        "courses": [_normalize_course(c) for c in courses if isinstance(c, dict)],
     }
 
 

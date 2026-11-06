@@ -25,6 +25,14 @@ CUNYfirst / DegreeWorks transcripts have quirky formatting. Apply these rules pr
    Set status = "in-progress" and grade = null.
    Do NOT treat "IP" as a letter grade.
 
+2b. CURRENT TERM: NO GRADE MEANS IN-PROGRESS
+   CUNYfirst lists the current term's courses with a blank grade and "0.00" earned
+   credits. A course with no grade is in-progress, not completed: set
+   status = "in-progress" and grade = null. Its 0.00 is earned credits, not the
+   course's credit value: use the attempted credits if the row shows them, otherwise
+   set credits = null. Never report 0 credits for an in-progress course.
+   "Contact Hours" are class hours, not credits: never use them as credits.
+
 3. ALL-CAPS SEMESTER LABELS
    CUNYfirst writes semesters in all-caps: "FALL 2024", "SPRING 2025", "SUMMER 2026".
    Normalise to title case: "Fall 2024", "Spring 2025", "Summer 2026".
@@ -85,6 +93,7 @@ Return ONLY valid JSON — no markdown fences, no prose.
 }
 
 status must be exactly one of: "completed", "in-progress", "withdrawn"
+A course is "completed" only when it has a grade.
 grade must be null for in-progress and withdrawn courses (use the grade letter only for completed).
 Never omit a field — use null for any field you cannot determine.
 """
