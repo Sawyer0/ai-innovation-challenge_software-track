@@ -3,6 +3,7 @@ import type {
   StudentProfile,
   AdvisementResponse,
   ComplianceViolation,
+  ParsedCourse,
   Program,
   TranscriptParseResult,
 } from "../types";
@@ -100,34 +101,36 @@ export async function createSession(): Promise<SessionResponse> {
   return request<SessionResponse>("/api/session/", { method: "POST" });
 }
 
-export async function setProfile(
-  sessionId: string,
-  profile: StudentProfile
-): Promise<void> {
-  await request(`/api/session/${sessionId}/profile`, {
-    method: "POST",
-    body: JSON.stringify(profile),
-  });
+/** Runs a call with the visitor's session id; see runWithSession. */
+export type SessionRunner = <T>(call: (sessionId: string) => Promise<T>) => Promise<T>;
+
+function isSessionNotFound(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 404 && e.message === "Session not found";
 }
 
-export async function saveParsedCourses(
-  sessionId: string,
-  courses: import("../types").ParsedCourse[]
-): Promise<{ saved: number; total: number }> {
-  return request(`/api/session/${sessionId}/courses/bulk`, {
-    method: "POST",
-    body: JSON.stringify(
-      courses.map((c) => ({
-        course_code: c.course_code,
-        course_title: c.course_title,
-        semester_taken: c.semester_taken ?? null,
-        status: c.status,
-        grade: c.grade ?? null,
-        credits: c.credits ?? 0,
-        source: "transcript",
-      }))
-    ),
-  });
+/**
+ * Run `call` with the current session id. Creates a session when there is none, and
+ * when the server doesn't know the id it creates a new one and retries once. Each
+ * call sends all the state it needs, so retrying it re-sends that state too.
+ */
+export async function runWithSession<T>(
+  current: string | null,
+  adopt: (sessionId: string) => void,
+  call: (sessionId: string) => Promise<T>
+): Promise<T> {
+  let sessionId = current;
+  if (!sessionId) {
+    sessionId = (await createSession()).session_id;
+    adopt(sessionId);
+  }
+  try {
+    return await call(sessionId);
+  } catch (e) {
+    if (!isSessionNotFound(e)) throw e;
+    const fresh = (await createSession()).session_id;
+    adopt(fresh);
+    return call(fresh);
+  }
 }
 
 // ── Transcript ────────────────────────────────────────────────────────────────
@@ -150,15 +153,33 @@ export async function uploadTranscript(
 
 // ── Advisement ────────────────────────────────────────────────────────────────
 
+/**
+ * Ask for a plan. The profile and courses travel with the request, so it works on
+ * whichever server instance answers, even one that has never seen this session.
+ */
 export async function getAdvisement(
   sessionId: string,
-  message: string
+  message: string,
+  profile: StudentProfile,
+  courses: ParsedCourse[]
 ): Promise<AdvisementResponse> {
   return request<AdvisementResponse>(
     `/api/session/${sessionId}/advisement`,
     {
       method: "POST",
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        profile,
+        courses: courses.map((c) => ({
+          course_code: c.course_code,
+          course_title: c.course_title,
+          semester_taken: c.semester_taken ?? null,
+          status: c.status,
+          grade: c.grade ?? null,
+          credits: c.credits ?? null,
+          source: "transcript",
+        })),
+      }),
     },
     true
   );

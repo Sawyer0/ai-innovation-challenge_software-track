@@ -11,13 +11,9 @@ class ParserService:
     def __init__(self, session_service: SessionService):
         self.session_service = session_service
 
-    async def parse_and_save(
-        self,
-        file: UploadFile,
-        session_id: str,
-    ) -> dict[str, Any]:
+    async def parse(self, file: UploadFile) -> dict[str, Any]:
         """
-        Parse uploaded transcript and return {profile, courses}.
+        Parse uploaded transcript and return {profile, courses}; nothing is stored.
         Filters out entries without a course_code to avoid DB constraint errors.
         """
         result = await parse_transcript(file)

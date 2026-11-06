@@ -4,6 +4,7 @@ create session -> upload transcript -> review and save courses -> set profile
 -> get advisement. AI providers are the fakes from conftest.
 """
 
+import uuid
 from io import BytesIO
 
 import pytest
@@ -213,3 +214,87 @@ class TestErrorHandlingWorkflows:
             json={"course_code": "MAT 206", "status": "in-progress", "credits": 4},
         )
         assert resp.status_code in [200, 409]
+
+
+PROFILE = {
+    "school": "BMCC",
+    "program_code": "CSC-AS",
+    "enrollment_status": "full-time",
+    "financial_aid_type": "pell",
+    "career_goal": "robotics engineer",
+}
+
+
+@pytest.mark.e2e
+@pytest.mark.slow
+class TestSessionsUnknownToThisInstance:
+    """On Vercel each instance has its own session store, so a session id the browser
+    holds is often unknown to the instance that handles the next request."""
+
+    def test_upload_with_an_unknown_session_id_succeeds(self, client, ai_providers):
+        ai_providers.primary.queue(TRANSCRIPT)
+
+        response = client.post(
+            f"/api/session/{uuid.uuid4()}/transcript",
+            files={"file": ("JTTranscript.png", BytesIO(b"fake image"), "image/png")},
+        )
+
+        assert response.status_code == 200
+        assert [c["course_code"] for c in response.json()["courses"]] == ["MAT 157", "ENG 101"]
+
+    def test_profile_and_courses_recreate_an_unknown_session(self, client):
+        session_id = str(uuid.uuid4())
+
+        assert client.post(f"/api/session/{session_id}/profile", json=PROFILE).status_code == 200
+        bulk = client.post(f"/api/session/{session_id}/courses/bulk", json=TRANSCRIPT["courses"])
+        assert bulk.json() == {"saved": 2, "total": 2}
+        assert client.get(f"/api/session/{session_id}").json()["profile"]["school"] == "BMCC"
+
+    def test_advisement_carries_its_own_state_to_any_instance(
+        self, client, csc_program, ai_providers
+    ):
+        ai_providers.primary.queue(TRANSCRIPT, PLAN)
+        parsed = client.post(
+            f"/api/session/{uuid.uuid4()}/transcript",
+            files={"file": ("t.png", BytesIO(b"fake image"), "image/png")},
+        ).json()
+
+        # A different instance, which has never seen this session.
+        resp = client.post(
+            f"/api/session/{uuid.uuid4()}/advisement",
+            json={"message": "What next?", "profile": PROFILE, "courses": parsed["courses"]},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["recommended_courses"][0]["course_code"] == "MAT 206"
+        prompt = ai_providers.primary.calls[1]["prompt"]
+        assert "MAT 157" in prompt and "ENG 101" in prompt
+        assert "robotics engineer" in prompt
+
+    def test_state_sent_with_advisement_replaces_stored_state(
+        self, client, csc_program, ai_providers
+    ):
+        ai_providers.primary.queue(PLAN)
+        session_id = client.post("/api/session").json()["session_id"]
+        client.post(
+            f"/api/session/{session_id}/courses",
+            json={"course_code": "CSC 999", "status": "completed", "credits": 3},
+        )
+
+        resp = client.post(
+            f"/api/session/{session_id}/advisement",
+            json={"message": "?", "profile": PROFILE, "courses": TRANSCRIPT["courses"]},
+        )
+
+        assert resp.status_code == 200
+        stored = client.get(f"/api/session/{session_id}").json()["courses"]
+        assert sorted(c["course_code"] for c in stored) == ["ENG 101", "MAT 157"]
+
+    def test_malformed_session_ids_are_still_rejected(self, client):
+        response = client.post(
+            "/api/session/not-a-session/transcript",
+            files={"file": ("t.png", BytesIO(b"fake image"), "image/png")},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Session not found"

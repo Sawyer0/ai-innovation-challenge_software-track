@@ -85,6 +85,30 @@ class ChatMessage(BaseModel):
     message: str
 
 
+class SessionCourse(BaseModel):
+    """A course the browser already holds (from a parsed transcript)."""
+
+    course_code: str = Field(..., max_length=20)
+    course_title: str | None = None
+    semester_taken: str | None = Field(None, max_length=20)
+    status: str = Field(..., max_length=20)
+    grade: str | None = Field(None, max_length=5)
+    credits: float | None = Field(None, ge=0)
+    source: str = Field("transcript", max_length=50)
+
+
+class AdvisementRequest(ChatMessage):
+    """An advisement request that can carry the student's whole state.
+
+    Sessions are per server instance, so the browser sends what it holds and the
+    request works on any instance. When ``profile`` or ``courses`` is given it
+    replaces what the session had stored.
+    """
+
+    profile: StudentProfileBase | None = None
+    courses: list[SessionCourse] | None = Field(None, max_length=200)
+
+
 class RecommendedCourse(BaseModel):
     course_code: str
     course_title: str

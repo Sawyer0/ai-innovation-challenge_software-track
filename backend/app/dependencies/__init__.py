@@ -5,10 +5,12 @@ Provides factory functions for repositories, services, and entity lookups.
 Uses generic factories to reduce boilerplate code.
 """
 
+import uuid
 from collections.abc import Callable
 from typing import TypeVar
 
 from fastapi import Depends
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -66,6 +68,47 @@ def get_current_session(
     if not session:
         raise SessionNotFoundError()
     return session
+
+
+def is_session_id(session_id: str) -> bool:
+    """True for ids shaped like the ones POST /api/session hands out (UUIDs)."""
+    try:
+        uuid.UUID(session_id)
+    except ValueError:
+        return False
+    return True
+
+
+def get_or_create_session(
+    session_id: str, repo: SessionRepository = Depends(get_session_repository)
+) -> StudentSession:
+    """Get the session, recreating it when this server instance has never seen it.
+
+    Sessions live in a per-instance SQLite file on Vercel, so a valid id the browser
+    holds can reach an instance (or a fresh deploy) without its row. Treat that as a
+    new, empty session instead of failing; ids that aren't UUIDs still get a 404.
+    """
+    if not is_session_id(session_id):
+        raise SessionNotFoundError()
+    session = repo.get_by_session_id(session_id)
+    if session is not None:
+        return session
+    try:
+        return repo.create_session(session_id)
+    except IntegrityError:
+        # A concurrent request on this instance created it first.
+        repo.db.rollback()
+        session = repo.get_by_session_id(session_id)
+        if session is None:
+            raise
+        return session
+
+
+def require_session_id(session_id: str) -> str:
+    """Check the id's shape only, for endpoints that keep no per-session state."""
+    if not is_session_id(session_id):
+        raise SessionNotFoundError()
+    return session_id
 
 
 def get_current_course(
@@ -141,6 +184,7 @@ __all__ = [
     "get_current_course",
     "get_current_program",
     "get_current_session",
+    "get_or_create_session",
     "get_parser_service",
     "get_prerequisite_service",
     "get_program_repository",
@@ -149,5 +193,7 @@ __all__ = [
     "get_repository",
     "get_session_repository",
     "get_session_service",
+    "is_session_id",
     "rate_limit",
+    "require_session_id",
 ]
