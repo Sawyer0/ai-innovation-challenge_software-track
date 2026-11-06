@@ -13,7 +13,7 @@ from sqlalchemy import text
 from .config import settings
 from .database import engine
 from .infrastructure.ai import MISSING_KEY_MESSAGE
-from .routers import advisement, courses, programs, sessions, transcript
+from .routers import advisement, courses, programs, sessions, transcript, usage
 from .services.catalog_loader import initialize_database
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Let a cross-origin frontend (local dev) read the quota and retry headers.
+    expose_headers=["Retry-After"]
+    + [
+        f"X-AI-{kind}-{window}"
+        for kind in ("Limit", "Remaining", "Reset")
+        for window in ("Minute", "Hour", "Day")
+    ],
 )
 
 
@@ -88,3 +95,4 @@ app.include_router(programs.router)
 app.include_router(sessions.router)
 app.include_router(transcript.router)
 app.include_router(advisement.router)
+app.include_router(usage.router)
