@@ -13,6 +13,7 @@ import pytest
 
 from app import models
 from app.infrastructure.ai import NoProviderConfiguredError
+from tests.pdf_factory import text_pdf
 
 
 @pytest.mark.integration
@@ -516,7 +517,7 @@ class TestTranscriptEndpoints:
 
         response = client.post(
             f"/api/session/{session_id}/transcript",
-            files={"file": ("transcript.pdf", BytesIO(b"%PDF-1.4 fake"), "application/pdf")},
+            files={"file": ("transcript.pdf", BytesIO(text_pdf()), "application/pdf")},
         )
 
         assert response.status_code == 200

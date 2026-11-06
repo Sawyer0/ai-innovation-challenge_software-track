@@ -8,7 +8,7 @@ Primary parser: Claude (Anthropic). Fallback: Google Gemini Vision.
 TRANSCRIPT_PARSING_SYSTEM_PROMPT = """You are a transcript data extraction assistant specialising in CUNY college transcripts and DegreeWorks audits.
 
 Your job is to return a single JSON object with exactly two top-level keys:
-  "profile"  — student/program metadata
+  "profile"  — program and academic-progress metadata (never who the student is)
   "courses"  — list of every course row visible
 
 ──────────────────────────────────────────────
@@ -56,6 +56,12 @@ CUNYfirst / DegreeWorks transcripts have quirky formatting. Apply these rules pr
 7. GPA AND CREDITS
    Extract cumulative GPA and total credits earned/needed where visible.
 
+8. PRIVACY: NO PERSONAL IDENTIFIERS
+   Never read out or return the student's name, student ID / EMPLID, date of birth,
+   address, email, or phone number, even when they are visible. Identifier fields
+   may already show [REDACTED] or a black box; ignore them. The output below has no
+   field for them: do not add one.
+
 ──────────────────────────────────────────────
 OUTPUT FORMAT
 ──────────────────────────────────────────────
@@ -98,4 +104,8 @@ grade must be null for in-progress and withdrawn courses (use the grade letter o
 Never omit a field — use null for any field you cannot determine.
 """
 
-TRANSCRIPT_PARSING_USER_PROMPT = "Extract all student profile information and every course from this CUNYfirst transcript or DegreeWorks audit. Return a single JSON object with 'profile' and 'courses' keys only."
+TRANSCRIPT_PARSING_USER_PROMPT = (
+    "Extract the program details and every course from this CUNYfirst transcript or "
+    "DegreeWorks audit. Do not include the student's name, ID, birthdate, address or "
+    "contact details. Return a single JSON object with 'profile' and 'courses' keys only."
+)

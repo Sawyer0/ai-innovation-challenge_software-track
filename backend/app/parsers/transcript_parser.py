@@ -21,6 +21,7 @@ from ..infrastructure.ai.errors import (
     busy_message,
     classify_provider_error,
 )
+from ..infrastructure.ai.redaction import redact_text
 from ..prompts import (
     TRANSCRIPT_PARSING_SYSTEM_PROMPT,
     TRANSCRIPT_PARSING_USER_PROMPT,
@@ -90,6 +91,21 @@ def _normalize_course(course: dict[str, Any]) -> dict[str, Any]:
     return course
 
 
+# Only these fields leave the parser. Anything else a model returns (a name or a
+# student ID read off the page, say) is dropped.
+PROFILE_FIELDS = (
+    "school",
+    "program_code",
+    "program_name",
+    "degree",
+    "student_type",
+    "cumulative_gpa",
+    "total_credits_earned",
+    "total_credits_needed",
+)
+COURSE_FIELDS = ("course_code", "course_title", "semester_taken", "credits", "grade", "status")
+
+
 def _normalize_result(raw: Any) -> dict[str, Any]:
     """
     Normalize the AI response into {profile, courses}.
@@ -110,8 +126,12 @@ def _normalize_result(raw: Any) -> dict[str, Any]:
         profile = {}
 
     return {
-        "profile": profile,
-        "courses": [_normalize_course(c) for c in courses if isinstance(c, dict)],
+        "profile": {key: profile[key] for key in PROFILE_FIELDS if key in profile},
+        "courses": [
+            _normalize_course({key: c.get(key) for key in COURSE_FIELDS})
+            for c in courses
+            if isinstance(c, dict)
+        ],
     }
 
 
@@ -152,7 +172,8 @@ async def _read_pages(provider: LLMProvider, pages: list[bytes]) -> dict[str, An
 
 
 async def _read_with(provider: LLMProvider, data: bytes, mime_type: str) -> dict[str, Any]:
-    if mime_type != PDF or provider.reads_pdf:
+    if mime_type != PDF:
+        # A screenshot has no text to find identifiers in; see redaction.py.
         text = await provider.read_document(
             TRANSCRIPT_PARSING_SYSTEM_PROMPT,
             TRANSCRIPT_PARSING_USER_PROMPT,
@@ -162,12 +183,13 @@ async def _read_with(provider: LLMProvider, data: bytes, mime_type: str) -> dict
         )
         return _normalize_result(parse_json_response(text))
 
-    # No PDF input: send the text layer when it looks like a transcript, else page images.
+    # A PDF is never sent as-is, even to providers that take PDFs: it goes as its
+    # text layer with identifiers redacted, or as page images with them blacked out.
     pdf_text = extract_pdf_text(data)
     if pdf_text_is_usable(pdf_text):
         text = await provider.complete(
             TRANSCRIPT_PARSING_SYSTEM_PROMPT,
-            f"{TRANSCRIPT_PARSING_USER_PROMPT}\n\n--- Document text ---\n{pdf_text}",
+            f"{TRANSCRIPT_PARSING_USER_PROMPT}\n\n--- Document text ---\n{redact_text(pdf_text)}",
             max_tokens=TRANSCRIPT_MAX_TOKENS,
         )
         result = _normalize_result(parse_json_response(text))
@@ -212,12 +234,12 @@ async def parse_transcript(file: UploadFile) -> dict[str, Any]:
         except Exception as e:
             failure = classify_provider_error(e)
             failures.append(failure)
+            # The error type only: provider messages can quote the request.
             logger.warning(
-                "Transcript parsing via %s failed (%s): %s: %s",
+                "Transcript parsing via %s failed (%s): %s",
                 provider.name,
                 failure.kind,
                 type(e).__name__,
-                e,
             )
             continue
         if result["courses"]:
