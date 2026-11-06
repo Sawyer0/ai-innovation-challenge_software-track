@@ -15,6 +15,45 @@ SAMPLE_ROWS = [
     "Term GPA: 3.600   Term Total: 10.00  10.00",
 ]
 
+# A made-up student in a CUNYfirst-style header. None of this is real.
+FAKE_NAME = "Testperson,Jordana Q"
+FAKE_EMPLID = "24681357"
+FAKE_BIRTHDATE = "03/14"
+FAKE_STREET = "742 Evergreen Terrace Apt 3B"
+FAKE_CITY_LINE = "Springfield, NY 10999-1234"
+FAKE_EMAIL = "jordana.testperson@example.edu"
+FAKE_PHONE = "(212) 555-0147"
+FAKE_IDENTIFIERS = (
+    "Testperson",
+    "Jordana",
+    FAKE_EMPLID,
+    FAKE_BIRTHDATE,
+    "Evergreen",
+    "Springfield",
+    "10999",
+    FAKE_EMAIL,
+    "555-0147",
+)
+
+HEADER_ROWS = [
+    "Unofficial Academic Transcript",
+    "City University of New York - Student Copy Transcript",
+    f"Name: {FAKE_NAME}",
+    f"Student ID: {FAKE_EMPLID}",
+    f"Birthdate: {FAKE_BIRTHDATE}",
+    f"Student Address: {FAKE_STREET}",
+    FAKE_CITY_LINE,
+    f"Email: {FAKE_EMAIL}   Phone: {FAKE_PHONE}",
+    "Print Date: 11/05/2026",
+    "--------------- Beginning of Undergraduate Record ---------------",
+]
+FOOTER_ROWS = ["Testperson, Jordana Q - Page 1 of 1"]
+
+
+def header_transcript_rows() -> list[str]:
+    """SAMPLE_ROWS under a header full of (fake) identifiers, name repeated in a footer."""
+    return [*HEADER_ROWS, *SAMPLE_ROWS, *FOOTER_ROWS]
+
 
 def _escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
