@@ -9,5 +9,7 @@ anthropic>=0.40.0
 google-genai>=0.1.0
 httpx>=0.26.0  # Groq (OpenAI-compatible) HTTP client
 pypdf>=4.0.0  # PDF text for providers without PDF input (Groq)
+pypdfium2>=4.30.0  # renders scanned PDF pages to images for the vision model
+pillow>=10.0.0  # encodes rendered pages as JPEG
 
 # Optional: scripts/scrape_bmcc.py (catalog refresh) also needs `playwright`.
