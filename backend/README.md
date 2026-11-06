@@ -42,10 +42,11 @@ All settings come from environment variables or `backend/.env` (gitignored). See
 | `TRUST_PROXY_HEADERS` | `false` | Read the client IP from `X-Real-IP` / `X-Forwarded-For` (only behind a proxy that sets them) |
 
 Providers with a key are tried in order Claude → Gemini → Groq; if one fails or returns
-malformed JSON the next is used. Groq's API does not accept PDF files, so it receives a
-PDF's text layer when that looks like a transcript, and otherwise (scans, photos saved
-as PDF, odd encodings) the first 4 pages rendered as images for `GROQ_VISION_MODEL`,
-3 per request. Password-protected PDFs are rejected with a message; CUNYfirst's
+malformed JSON the next is used. No provider receives a PDF file: each gets the PDF's
+text layer, with personal identifiers redacted, when that looks like a transcript, and
+otherwise (scans, photos saved as PDF, odd encodings) the first 4 pages rendered as
+images (`GROQ_VISION_MODEL` on Groq, 3 per request), with identifiers found in the text
+layer blacked out. See Privacy in the top-level README for what is and isn't redacted. Password-protected PDFs are rejected with a message; CUNYfirst's
 empty-password encryption opens normally.
 
 Failures map to messages a visitor can act on: provider rate limits and outages return
@@ -60,7 +61,10 @@ endpoints return `503` with setup instructions.
 
 ## API
 
-All routes are under `/api`. Sessions are anonymous UUIDs.
+All routes are under `/api`. Sessions are anonymous UUIDs. Sessions are stored per
+server instance, so the write, transcript and advisement routes accept any well-formed
+UUID, creating the session when this instance doesn't have it; a malformed id gets
+`404 Session not found`.
 
 | Method | Path | Description |
 |---|---|---|
@@ -75,7 +79,7 @@ All routes are under `/api`. Sessions are anonymous UUIDs.
 | `DELETE` | `/api/session/{id}/courses/{code}` | Remove a course |
 | `POST` | `/api/session/{id}/transcript` | Parse a transcript PDF/image into `{profile, courses}` (does not save) |
 | `GET` | `/api/session/{id}/advisement/eligible` | Remaining requirements with prerequisites met |
-| `POST` | `/api/session/{id}/advisement` | Guardrails, then an AI course plan |
+| `POST` | `/api/session/{id}/advisement` | Guardrails, then an AI course plan. Body `{message, profile?, courses?}`; `profile` and `courses` replace what the session stored, so one request carries everything |
 | `GET` | `/api/courses/?search=&skip=&limit=` | Search the catalog |
 | `GET` | `/api/courses/{code}` | Course detail |
 | `GET` | `/api/programs/` | Programs |
