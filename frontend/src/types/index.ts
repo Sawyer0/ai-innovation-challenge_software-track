@@ -29,7 +29,8 @@ export interface ParsedCourse {
   course_code: string;
   course_title: string;
   semester_taken: string | null;
-  credits: number;
+  // null when the transcript doesn't show it (in-progress) and the catalog has no match
+  credits: number | null;
   grade: string | null;
   status: "completed" | "in-progress" | "withdrawn";
 }
@@ -107,4 +108,19 @@ export interface Program {
   name: string;
   degree?: string | null;
   department?: string | null;
+}
+
+// ── AI usage ──────────────────────────────────────────────────────────────────
+
+export interface UsageWindow {
+  limit: number;
+  remaining: number;
+  reset_seconds: number;
+}
+
+// minute/hour are per visitor; day is the demo-wide daily cap.
+export interface AiUsage {
+  minute: UsageWindow;
+  hour: UsageWindow;
+  day: UsageWindow;
 }

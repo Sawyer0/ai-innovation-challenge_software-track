@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { uploadTranscript, saveParsedCourses } from "../api/client";
+import { uploadTranscript, saveParsedCourses, MAX_UPLOAD_BYTES, ApiError } from "../api/client";
+import UsageChip from "./UsageChip";
 import type { TranscriptParseResult, TranscriptProfileHints, ParsedCourse } from "../types";
 
 interface Props {
@@ -31,6 +32,14 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
     const invalid = list.filter((f) => !ALLOWED.includes(f.type));
     if (invalid.length > 0) {
       setErrorMsg(`Unsupported file type: ${invalid.map((f) => f.name).join(", ")}. Use ${ALLOWED_EXT}.`);
+      setStatus("error");
+      return;
+    }
+    const tooBig = list.filter((f) => f.size > MAX_UPLOAD_BYTES);
+    if (tooBig.length > 0) {
+      setErrorMsg(
+        `${tooBig.map((f) => f.name).join(", ")} is over the 4.5 MB upload limit. Try a smaller PDF or a screenshot.`
+      );
       setStatus("error");
       return;
     }
@@ -84,7 +93,10 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
             : mergedProfile.total_credits_earned,
         };
       } catch (e) {
-        setErrorMsg(`Failed to parse "${selectedFiles[i].name}": ${e instanceof Error ? e.message : "Unknown error"}`);
+        const message = e instanceof Error ? e.message : "Unknown error";
+        // Busy/limit messages are about the demo, not the file.
+        const aboutFile = !(e instanceof ApiError && [0, 429, 503].includes(e.status));
+        setErrorMsg(aboutFile ? `Couldn't read "${selectedFiles[i].name}": ${message}` : message);
         setStatus("error");
         return;
       }
@@ -135,6 +147,9 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
         Upload screenshots or PDFs from CUNYfirst — we'll extract your courses and
         pre-fill your profile. You'll review everything before submitting.
       </p>
+      <div className="usage-row">
+        <UsageChip />
+      </div>
 
       {/* Drop zone — only shown when not in uploading/done states */}
       {status !== "uploading" && status !== "done" && (
