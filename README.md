@@ -167,8 +167,10 @@ receives every `/api/*` request. The frontend calls the API on the same origin.
 - **Sessions are ephemeral** in the deployed demo: they live in that instance's `/tmp`
   and disappear when it is recycled, and two instances don't share them.
 - **Abuse limits:** advisement and transcript upload are limited per IP (5/minute,
-  30/hour by default) on top of the per-session limit; CORS allows only the
-  deployment's own origins.
+  30/hour by default) on top of the per-session limit, with a demo-wide cap of 500
+  AI requests per 24 hours (`AI_DAILY_LIMIT`) to bound provider spend. The page shows
+  visitors how many requests they have left. The counts live in memory per function
+  instance, so they are best-effort; CORS allows only the deployment's own origins.
 
 ## Known limitations
 

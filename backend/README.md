@@ -38,11 +38,24 @@ All settings come from environment variables or `backend/.env` (gitignored). See
 | `CORS_ORIGINS` | `["http://localhost:3000","http://localhost:5173"]` | |
 | `APP_ENV` | `development` | `production` moves the API docs to `/api/docs` |
 | `AI_RATE_LIMIT_PER_MINUTE` / `AI_RATE_LIMIT_PER_HOUR` | `5` / `30` | Per-IP limits on advisement and transcript |
+| `AI_DAILY_LIMIT` | `500` | Cap on AI requests across all visitors per 24 hours (bounds provider spend) |
 | `TRUST_PROXY_HEADERS` | `false` | Read the client IP from `X-Real-IP` / `X-Forwarded-For` (only behind a proxy that sets them) |
 
 Providers with a key are tried in order Claude → Gemini → Groq; if one fails or returns
-malformed JSON the next is used. Groq receives PDFs as their extracted text, since its
-API does not accept PDF files. With no key set, `/health` reports `degraded` and the AI
+malformed JSON the next is used. Groq's API does not accept PDF files, so it receives a
+PDF's text layer when that looks like a transcript, and otherwise (scans, photos saved
+as PDF, odd encodings) the first 4 pages rendered as images for `GROQ_VISION_MODEL`,
+3 per request. Password-protected PDFs are rejected with a message; CUNYfirst's
+empty-password encryption opens normally.
+
+Failures map to messages a visitor can act on: provider rate limits and outages return
+`503` with `Retry-After`, timeouts `504`, unreadable files `400`/`422`, and the real
+provider error is only logged.
+
+The AI limits (per-IP minute/hour and the global daily cap) are kept in memory, so on
+serverless each warm instance counts separately: they are best-effort, not exact. AI
+responses carry `X-AI-Limit-*`, `X-AI-Remaining-*` and `X-AI-Reset-*` headers
+(`Minute`, `Hour`, `Day`), and `GET /api/usage` reports the same without counting. With no key set, `/health` reports `degraded` and the AI
 endpoints return `503` with setup instructions.
 
 ## API
@@ -52,6 +65,7 @@ All routes are under `/api`. Sessions are anonymous UUIDs.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | DB status and which AI providers have keys |
+| `GET` | `/api/usage` | Caller's remaining AI quota (minute/hour per IP, day global); free |
 | `POST` | `/api/session/` | Create a session |
 | `GET` | `/api/session/{id}` | Session with profile and courses |
 | `GET` | `/api/session/{id}/status` | Expiry status |
