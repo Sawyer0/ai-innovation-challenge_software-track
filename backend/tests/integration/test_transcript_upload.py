@@ -1,7 +1,8 @@
-"""Transcript upload through a Groq-like provider (no PDF input)."""
+"""Transcript upload through a Groq-like provider (no PDF input) and its error messages."""
 
 import io
 
+import httpx
 import pytest
 from PIL import Image
 
@@ -10,6 +11,12 @@ from tests.integration.transcript_helpers import course, upload
 from tests.pdf_factory import image_pdf, locked_pdf, text_pdf
 
 pytestmark = pytest.mark.integration
+
+
+def _http_error(status: int, headers: dict[str, str] | None = None) -> httpx.HTTPStatusError:
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    response = httpx.Response(status, headers=headers, request=request)
+    return httpx.HTTPStatusError("provider error", request=request, response=response)
 
 
 class TestPdfRouting:
@@ -75,3 +82,46 @@ class TestPdfRouting:
         groq_like.queue({"courses": [course("MAT 206")]})
 
         assert upload(client, session_id, locked_pdf("")).status_code == 200
+
+
+class TestErrorMessages:
+    def test_rate_limited_provider_says_when_to_retry(self, client, session_id, groq_like):
+        groq_like.queue(_http_error(429, {"retry-after": "12"}))
+
+        response = upload(client, session_id, b"img", "t.png", "image/png")
+
+        assert response.status_code == 503
+        assert response.headers["retry-after"] == "12"
+        assert "try again in 12 seconds" in response.json()["detail"]
+
+    def test_provider_outage_is_reported_as_busy(self, client, session_id, groq_like):
+        groq_like.queue(_http_error(500))
+
+        response = upload(client, session_id, b"img", "t.png", "image/png")
+
+        assert response.status_code == 503
+        assert "busy" in response.json()["detail"]
+
+    def test_timeout(self, client, session_id, groq_like):
+        groq_like.queue(httpx.ReadTimeout("slow"))
+
+        response = upload(client, session_id, b"img", "t.png", "image/png")
+
+        assert response.status_code == 504
+        assert "took too long" in response.json()["detail"]
+
+    def test_unparseable_reply_gives_guidance(self, client, session_id, groq_like):
+        groq_like.queue("this is not json")
+
+        response = upload(client, session_id, b"img", "t.png", "image/png")
+
+        assert response.status_code == 502
+        assert "couldn't read this transcript" in response.json()["detail"]
+
+    def test_no_courses_found(self, client, session_id, groq_like):
+        groq_like.queue({"profile": {}, "courses": []})
+
+        response = upload(client, session_id, b"img", "t.png", "image/png")
+
+        assert response.status_code == 422
+        assert "couldn't find any courses" in response.json()["detail"]
