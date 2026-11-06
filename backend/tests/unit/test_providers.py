@@ -9,7 +9,6 @@ import httpx
 import pytest
 
 from app.config import settings
-from app.infrastructure.ai import providers
 from app.infrastructure.ai.providers import (
     GroqProvider,
     NoProviderConfiguredError,
@@ -95,21 +94,25 @@ class TestGroqProvider:
         image = body["messages"][1]["content"][1]["image_url"]["url"]
         assert image.startswith("data:image/png;base64,")
 
-    async def test_pdfs_are_sent_as_extracted_text(self, monkeypatch):
-        monkeypatch.setattr(providers, "extract_pdf_text", lambda data: "MAT 157  A  4.0")
+    async def test_page_batches_go_to_the_vision_model_in_one_request(self):
         groq, seen = _groq(lambda r: _reply("{}"))
 
-        await groq.read_document("sys", "read this", b"%PDF", "application/pdf", max_tokens=50)
+        await groq.read_images("sys", "read", [b"p1", b"p2", b"p3"], "image/jpeg", max_tokens=50)
 
+        assert len(seen) == 1
         body = json.loads(seen[0].content)
-        assert body["model"] == settings.GROQ_MODEL
-        assert "MAT 157  A  4.0" in body["messages"][1]["content"]
+        assert body["model"] == settings.GROQ_VISION_MODEL
+        parts = body["messages"][1]["content"]
+        assert parts[0] == {"type": "text", "text": "read"}
+        urls = [p["image_url"]["url"] for p in parts[1:]]
+        assert len(urls) == 3
+        assert all(u.startswith("data:image/jpeg;base64,") for u in urls)
 
-    async def test_pdf_without_text_layer_is_rejected(self, monkeypatch):
-        monkeypatch.setattr(providers, "extract_pdf_text", lambda data: "")
+    async def test_pdfs_are_not_sent_directly(self):
         groq, seen = _groq(lambda r: _reply("{}"))
 
-        with pytest.raises(ValueError, match="no text layer"):
+        assert groq.reads_pdf is False
+        with pytest.raises(ValueError, match="no PDF input"):
             await groq.read_document("sys", "p", b"%PDF", "application/pdf", max_tokens=50)
         assert seen == []
 

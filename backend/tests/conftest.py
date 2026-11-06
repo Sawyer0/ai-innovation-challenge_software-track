@@ -32,22 +32,29 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 class FakeProvider:
     """An LLMProvider that replays queued replies and records every call.
 
-    With nothing queued it raises, like a provider that is down.
+    With nothing queued it raises, like a provider that is down. A queued Exception
+    is raised instead of returned. ``reads_pdf=False`` behaves like Groq: PDFs reach it
+    as text (``complete``) or page images (``read_images``).
     """
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, *, reads_pdf: bool = True, max_images: int = 3) -> None:
         self.name = name
-        self.replies: list[str] = []
+        self.reads_pdf = reads_pdf
+        self.max_images_per_request = max_images
+        self.replies: list[str | Exception] = []
         self.calls: list[dict[str, Any]] = []
 
-    def queue(self, *replies: str | dict[str, Any] | list[Any]) -> None:
-        self.replies.extend(r if isinstance(r, str) else json.dumps(r) for r in replies)
+    def queue(self, *replies: str | dict[str, Any] | list[Any] | Exception) -> None:
+        self.replies.extend(r if isinstance(r, str | Exception) else json.dumps(r) for r in replies)
 
     def _next(self, **call: Any) -> str:
         self.calls.append(call)
         if not self.replies:
             raise RuntimeError(f"{self.name} unavailable (no reply queued)")
-        return self.replies.pop(0)
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
 
     async def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         return self._next(system=system, prompt=prompt)
@@ -56,6 +63,11 @@ class FakeProvider:
         self, system: str, prompt: str, data: bytes, mime_type: str, *, max_tokens: int
     ) -> str:
         return self._next(system=system, prompt=prompt, data=data, mime_type=mime_type)
+
+    async def read_images(
+        self, system: str, prompt: str, images: Any, mime_type: str, *, max_tokens: int
+    ) -> str:
+        return self._next(system=system, prompt=prompt, images=list(images), mime_type=mime_type)
 
 
 @pytest.fixture(autouse=True)

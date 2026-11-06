@@ -1,21 +1,23 @@
 """LLM providers behind one small interface.
 
-Every provider can complete a text prompt and read an uploaded document (PDF or
-image). ``get_providers()`` returns the ones that have an API key configured, in
+Every provider can complete a text prompt, read an uploaded document, and read a
+batch of page images. Providers without PDF input (``reads_pdf = False``) get PDFs
+as text or page images from the caller (see ``documents.py``). ``get_providers()`` returns the ones that have an API key configured, in
 fallback order: Claude, Gemini, then Groq (free tier). Tests replace it with fakes.
 """
 
 import asyncio
 import base64
-import io
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 import httpx
 from google.genai import types as genai_types
-from pypdf import PdfReader
 
 from ...config import settings
 from .client import get_claude_client, get_gemini_client
+
+REQUEST_TIMEOUT_SECONDS = 50
 
 MISSING_KEY_MESSAGE = (
     "No AI provider is configured. Set GROQ_API_KEY (free at https://console.groq.com/keys), "
@@ -32,6 +34,9 @@ class NoProviderConfiguredError(RuntimeError):
 
 class LLMProvider(Protocol):
     name: str
+    # False when the API takes no PDF input, so callers send text or page images.
+    reads_pdf: bool
+    max_images_per_request: int
 
     async def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         """Answer a text prompt."""
@@ -43,6 +48,12 @@ class LLMProvider(Protocol):
         """Answer a prompt about an uploaded PDF or image."""
         ...
 
+    async def read_images(
+        self, system: str, prompt: str, images: Sequence[bytes], mime_type: str, *, max_tokens: int
+    ) -> str:
+        """Answer a prompt about several images (e.g. rendered PDF pages) in one request."""
+        ...
+
 
 def _b64(data: bytes) -> str:
     return base64.standard_b64encode(data).decode("ascii")
@@ -50,6 +61,8 @@ def _b64(data: bytes) -> str:
 
 class ClaudeProvider:
     name = "claude"
+    reads_pdf = True
+    max_images_per_request = 20
 
     async def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         return await self._send(system, prompt, max_tokens)
@@ -67,6 +80,19 @@ class ClaudeProvider:
         ]
         return await self._send(system, content, max_tokens)
 
+    async def read_images(
+        self, system: str, prompt: str, images: Sequence[bytes], mime_type: str, *, max_tokens: int
+    ) -> str:
+        content: list[dict[str, Any]] = [
+            {
+                "type": "image",
+                "source": {"type": "base64", "media_type": mime_type, "data": _b64(image)},
+            }
+            for image in images
+        ]
+        content.append({"type": "text", "text": prompt})
+        return await self._send(system, content, max_tokens)
+
     async def _send(self, system: str, content: Any, max_tokens: int) -> str:
         client = get_claude_client()
         message = await asyncio.to_thread(
@@ -82,6 +108,8 @@ class ClaudeProvider:
 
 class GeminiProvider:
     name = "gemini"
+    reads_pdf = True
+    max_images_per_request = 20
 
     async def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         return await self._send([system, prompt])
@@ -93,6 +121,12 @@ class GeminiProvider:
             [system, genai_types.Part.from_bytes(data=data, mime_type=mime_type), prompt]
         )
 
+    async def read_images(
+        self, system: str, prompt: str, images: Sequence[bytes], mime_type: str, *, max_tokens: int
+    ) -> str:
+        parts = [genai_types.Part.from_bytes(data=image, mime_type=mime_type) for image in images]
+        return await self._send([system, *parts, prompt])
+
     async def _send(self, contents: list[Any]) -> str:
         client = get_gemini_client()
         response = await asyncio.to_thread(
@@ -101,20 +135,17 @@ class GeminiProvider:
         return response.text or ""
 
 
-def extract_pdf_text(data: bytes) -> str:
-    """Pull the text layer out of a PDF (CUNYfirst and DegreeWorks exports have one)."""
-    reader = PdfReader(io.BytesIO(data))
-    return "\n".join(page.extract_text() or "" for page in reader.pages).strip()
-
-
 class GroqProvider:
     """Groq's OpenAI-compatible chat completions API.
 
-    Text goes to GROQ_MODEL. Images go to GROQ_VISION_MODEL; PDFs are sent as
-    their extracted text because Groq does not accept PDF input.
+    Text goes to GROQ_MODEL and images to GROQ_VISION_MODEL. Groq takes no PDF
+    input, so callers send a PDF's text layer or its rendered pages instead.
     """
 
     name = "groq"
+    reads_pdf = False
+    # GROQ_VISION_MODEL (qwen3.8-27b) accepts at most 3 images per request.
+    max_images_per_request = 3
 
     def __init__(self, api_key: str, http: httpx.AsyncClient | None = None) -> None:
         self._api_key = api_key
@@ -128,23 +159,20 @@ class GroqProvider:
         self, system: str, prompt: str, data: bytes, mime_type: str, *, max_tokens: int
     ) -> str:
         if mime_type == "application/pdf":
-            text = extract_pdf_text(data)
-            if not text:
-                raise ValueError("This PDF has no text layer; upload a screenshot instead.")
-            return await self.complete(
-                system, f"{prompt}\n\n--- Document text ---\n{text}", max_tokens=max_tokens
-            )
+            raise ValueError("Groq takes no PDF input; send the PDF's text or page images.")
+        return await self.read_images(system, prompt, [data], mime_type, max_tokens=max_tokens)
 
-        image_url = f"data:{mime_type};base64,{_b64(data)}"
+    async def read_images(
+        self, system: str, prompt: str, images: Sequence[bytes], mime_type: str, *, max_tokens: int
+    ) -> str:
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        content.extend(
+            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{_b64(image)}"}}
+            for image in images
+        )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_url}},
-                ],
-            },
+            {"role": "user", "content": content},
         ]
         return await self._chat(settings.GROQ_VISION_MODEL, messages, max_tokens)
 
@@ -155,7 +183,8 @@ class GroqProvider:
         if self._http is not None:
             response = await self._http.post(url, json=payload, headers=headers)
         else:
-            async with httpx.AsyncClient(timeout=60) as http:
+            # Under the 60 s Vercel function limit, so a slow call fails with a clear message.
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as http:
                 response = await http.post(url, json=payload, headers=headers)
         response.raise_for_status()
         content: str | None = response.json()["choices"][0]["message"].get("content")
