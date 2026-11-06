@@ -14,6 +14,12 @@ from ..infrastructure.ai.documents import (
     pdf_text_is_usable,
     render_pdf_pages,
 )
+from ..infrastructure.ai.errors import (
+    TIMEOUT_MESSAGE,
+    ProviderFailure,
+    busy_message,
+    classify_provider_error,
+)
 from ..prompts import (
     TRANSCRIPT_PARSING_SYSTEM_PROMPT,
     TRANSCRIPT_PARSING_USER_PROMPT,
@@ -28,9 +34,23 @@ PAGE_IMAGE_MIME = "image/jpeg"
 
 SUPPORTED_MIME_TYPES = {PDF, "image/png", "image/jpeg", "image/gif", "image/webp"}
 
+NO_COURSES_MESSAGE = (
+    "We couldn't find any courses in this file. Upload your unofficial transcript from "
+    "CUNYfirst (PDF) or clear screenshots of it, or skip this step and fill in the form."
+)
+FAILED_MESSAGE = (
+    "We couldn't read this transcript. Try a clearer screenshot or the PDF from CUNYfirst, "
+    "or skip this step and fill in the form."
+)
+
 
 class TranscriptParsingError(RuntimeError):
-    """Raised when neither AI provider could read the transcript."""
+    """No provider could read the transcript. ``str(e)`` is safe to show the visitor."""
+
+    def __init__(self, message: str, status_code: int = 502, retry_after: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
 
 
 def _normalize_result(raw: Any) -> dict[str, Any]:
@@ -122,6 +142,16 @@ async def _read_with(provider: LLMProvider, data: bytes, mime_type: str) -> dict
     return await _read_pages(provider, render_pdf_pages(data))
 
 
+def _error_for(failures: list[ProviderFailure]) -> TranscriptParsingError:
+    busy = [f for f in failures if f.kind == "busy"]
+    if busy and len(busy) == len(failures):
+        retry_after = min(f.retry_after or 30 for f in busy)
+        return TranscriptParsingError(busy_message(retry_after), 503, retry_after)
+    if any(f.kind == "timeout" for f in failures):
+        return TranscriptParsingError(TIMEOUT_MESSAGE, 504)
+    return TranscriptParsingError(FAILED_MESSAGE, 502)
+
+
 async def parse_transcript(file: UploadFile) -> dict[str, Any]:
     """
     Parse a student transcript into {profile: {...}, courses: [...]}.
@@ -135,20 +165,33 @@ async def parse_transcript(file: UploadFile) -> dict[str, Any]:
             f"Unsupported file type {mime_type or 'unknown'}; upload a PDF or an image."
         )
 
+    failures: list[ProviderFailure] = []
+    empty_result: dict[str, Any] | None = None
     for provider in get_providers():
         try:
             result = await _read_with(provider, file_content, mime_type)
         except UnreadableDocumentError:
             raise
         except Exception as e:
-            logger.warning("Transcript parsing via %s failed: %s", provider.name, e)
+            failure = classify_provider_error(e)
+            failures.append(failure)
+            logger.warning(
+                "Transcript parsing via %s failed (%s): %s: %s",
+                provider.name,
+                failure.kind,
+                type(e).__name__,
+                e,
+            )
             continue
-        logger.info("Transcript parsed via %s", provider.name)
-        return result
+        if result["courses"]:
+            logger.info("Transcript parsed via %s", provider.name)
+            return result
+        empty_result = result
+        logger.warning("Transcript via %s returned no courses", provider.name)
 
-    raise TranscriptParsingError(
-        "Transcript parsing failed: no configured AI provider could read the file."
-    )
+    if empty_result is not None:
+        raise TranscriptParsingError(NO_COURSES_MESSAGE, 422)
+    raise _error_for(failures)
 
 
 async def parse_transcript_csv(file: UploadFile) -> dict[str, Any]:

@@ -25,4 +25,5 @@ async def upload_transcript(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except TranscriptParsingError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
+        headers = {"Retry-After": str(e.retry_after)} if e.retry_after else None
+        raise HTTPException(status_code=e.status_code, detail=str(e), headers=headers) from e
