@@ -11,6 +11,7 @@ import type {
 import { getPrograms } from "../api/client";
 import { BMCC_PROGRAMS } from "../data/bmccPrograms";
 import ProgramSearch from "./ProgramSearch";
+import UsageChip from "./UsageChip";
 
 interface Props {
   onSubmit: (profile: StudentProfile) => void;
@@ -190,7 +191,7 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
                         {c.course_title}
                         {c.semester_taken && <span className="parsed-term">{c.semester_taken}</span>}
                       </span>
-                      <span className="parsed-cr">{c.credits > 0 ? c.credits : "—"}</span>
+                      <span className="parsed-cr">{c.credits ? c.credits : "—"}</span>
                       <span className={`parsed-grade parsed-grade--${c.status}`}>
                         {c.status === "withdrawn" ? "W"
                           : c.status === "in-progress" ? "IP"
@@ -371,6 +372,9 @@ export default function ProfileForm({ onSubmit, loading, prefill, parsedCourses 
             </label>
 
             <div className="form-actions">
+              <span className="form-actions__usage">
+                <UsageChip />
+              </span>
               <button type="button" className="btn-secondary" onClick={back}>← Back</button>
               <button
                 type="submit"
