@@ -40,6 +40,19 @@ class SessionService:
             saved_courses.append(course)
         return saved_courses
 
+    def replace_courses(self, session_id: str, courses_data: list[dict[str, Any]]) -> None:
+        """Make the session's courses exactly ``courses_data`` (deduped by code + term)."""
+        for course in self.repo.list_courses(session_id):
+            self.repo.db.delete(course)
+        seen: set[tuple[Any, Any]] = set()
+        for data in courses_data:
+            key = (data.get("course_code"), data.get("semester_taken"))
+            if key in seen:
+                continue
+            seen.add(key)
+            self.repo.db.add(self.repo.new_course(session_id, data))
+        self.repo.db.commit()
+
     def delete_course(self, session_id: str, course_code: str) -> bool:
         course = self.repo.get_course(session_id, course_code)
         if not course:

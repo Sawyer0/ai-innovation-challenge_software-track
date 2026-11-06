@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .. import models, schemas
-from ..dependencies import get_cleanup_service, get_current_session, get_session_service
+from ..dependencies import (
+    get_cleanup_service,
+    get_current_session,
+    get_or_create_session,
+    get_session_service,
+)
 from ..services.cleanup_service import CleanupService
 from ..services.session_service import SessionService
 
@@ -39,7 +44,7 @@ def get_session(
 @router.post("/{session_id}/profile")
 def set_profile(
     profile_data: schemas.StudentProfileBase,
-    session: models.StudentSession = Depends(get_current_session),
+    session: models.StudentSession = Depends(get_or_create_session),
     service: SessionService = Depends(get_session_service),
 ):
     return service.set_profile(session.session_id, profile_data.model_dump(exclude_unset=True))
@@ -48,7 +53,7 @@ def set_profile(
 @router.post("/{session_id}/courses")
 def add_course(
     course_data: schemas.StudentCourseBase,
-    session: models.StudentSession = Depends(get_current_session),
+    session: models.StudentSession = Depends(get_or_create_session),
     service: SessionService = Depends(get_session_service),
 ):
     return service.add_course(session.session_id, course_data.model_dump())
@@ -57,7 +62,7 @@ def add_course(
 @router.post("/{session_id}/courses/bulk")
 def add_courses_bulk(
     courses: list[BulkCourseItem],
-    session: models.StudentSession = Depends(get_current_session),
+    session: models.StudentSession = Depends(get_or_create_session),
     service: SessionService = Depends(get_session_service),
 ):
     """Save a list of parsed transcript courses to the session, skipping duplicates."""

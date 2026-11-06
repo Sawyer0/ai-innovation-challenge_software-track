@@ -1,13 +1,14 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Intake from "./pages/Intake";
 import Results from "./pages/Results";
 import ComplianceAlert from "./components/ComplianceAlert";
 import {
   createSession,
-  setProfile,
   getAdvisement,
+  runWithSession,
   ComplianceError,
   API_DOCS_URL,
+  type SessionRunner,
 } from "./api/client";
 import type { AdvisementResponse, ComplianceViolation, StudentProfile, TranscriptProfileHints, ParsedCourse } from "./types";
 
@@ -49,50 +50,47 @@ export default function App() {
   const [violation, setViolation] = useState<ComplianceViolation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // The latest id, so calls made in a loop see a session recreated mid-way.
+  const sessionRef = useRef(sessionId);
+  const adoptSession = useCallback(
+    (id: string) => {
+      sessionRef.current = id;
+      setSessionId(id);
+    },
+    [setSessionId]
+  );
+  const withSession: SessionRunner = useCallback(
+    (call) => runWithSession(sessionRef.current, adoptSession, call),
+    [adoptSession]
+  );
+
   useEffect(() => {
     // Only create a new session if we don't have a cached one
     if (sessionId) return;
+    // Not fatal: runWithSession creates one on first use if this fails.
     createSession()
-      .then((s) => setSessionId(s.session_id))
-      .catch(() =>
-        setError("Could not connect to the server. Make sure the backend is running.")
-      );
+      .then((s) => adoptSession(s.session_id))
+      .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleProfileSubmit(profile: StudentProfile) {
-    if (!sessionId) return;
     setAppState("loading");
     setError(null);
     setViolation(null);
 
     try {
-      await setProfile(sessionId, profile);
-      const advisement = await getAdvisement(
-        sessionId,
-        "What should I take next semester?"
+      const advisement = await withSession((id) =>
+        getAdvisement(id, "What should I take next semester?", profile, parsedCourses)
       );
       setResult(advisement);
       setAppState("results");
     } catch (e) {
       if (e instanceof ComplianceError) {
         setViolation(e.violation);
-        setAppState("intake");
       } else {
-        const msg = e instanceof Error ? e.message : String(e);
-        // Session expired (server restarted) — create a fresh one
-        if (msg.includes("404") || msg.includes("Session not found") || msg.includes("ERR_FAILED")) {
-          try {
-            const fresh = await createSession();
-            setSessionId(fresh.session_id);
-            setError("Your session expired — please submit again.");
-          } catch {
-            setError("Could not connect to the server. Make sure the backend is running.");
-          }
-        } else {
-          setError(msg);
-        }
-        setAppState("intake");
+        setError(e instanceof Error ? e.message : String(e));
       }
+      setAppState("intake");
     }
   }
 
@@ -104,7 +102,7 @@ export default function App() {
     setParsedCourses([]);
     setAppState("intake");
     createSession()
-      .then((s) => setSessionId(s.session_id))
+      .then((s) => adoptSession(s.session_id))
       .catch(() => {});
   }
 
@@ -140,7 +138,7 @@ export default function App() {
           </div>
         )}
 
-        {(appState === "intake" || appState === "loading") && sessionId && (
+        {(appState === "intake" || appState === "loading") && (
           <>
             {violation && (
               <ComplianceAlert
@@ -149,7 +147,7 @@ export default function App() {
               />
             )}
             <Intake
-              sessionId={sessionId}
+              withSession={withSession}
               onSubmit={handleProfileSubmit}
               loading={appState === "loading"}
               prefill={prefill}

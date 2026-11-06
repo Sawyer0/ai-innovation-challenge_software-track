@@ -49,9 +49,14 @@ class SessionRepository(BaseRepository[StudentSession]):
             .first()
         )
 
-    def add_course(self, session_id: str, course_data: dict) -> StudentCourse:
-        """Add a course to a student session."""
-        student_course = StudentCourse(
+    def list_courses(self, session_id: str) -> list[StudentCourse]:
+        """All courses recorded for a session."""
+        return self.db.query(StudentCourse).filter(StudentCourse.session_id == session_id).all()
+
+    @staticmethod
+    def new_course(session_id: str, course_data: dict) -> StudentCourse:
+        """Build (but don't save) a course row for a session."""
+        return StudentCourse(
             session_id=session_id,
             course_code=course_data.get("course_code"),
             semester_taken=course_data.get("semester_taken"),
@@ -60,6 +65,10 @@ class SessionRepository(BaseRepository[StudentSession]):
             credits=course_data.get("credits"),
             source=course_data.get("source", "manual"),
         )
+
+    def add_course(self, session_id: str, course_data: dict) -> StudentCourse:
+        """Add a course to a student session."""
+        student_course = self.new_course(session_id, course_data)
         self.db.add(student_course)
         self.db.commit()
         self.db.refresh(student_course)

@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
-import { uploadTranscript, saveParsedCourses, MAX_UPLOAD_BYTES, ApiError } from "../api/client";
+import { uploadTranscript, MAX_UPLOAD_BYTES, ApiError, type SessionRunner } from "../api/client";
 import UsageChip from "./UsageChip";
 import type { TranscriptParseResult, TranscriptProfileHints, ParsedCourse } from "../types";
 
 interface Props {
-  sessionId: string;
+  withSession: SessionRunner;
   onParsed: (result: TranscriptParseResult) => void;
 }
 
@@ -19,7 +19,7 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function TranscriptUpload({ sessionId, onParsed }: Props) {
+export default function TranscriptUpload({ withSession, onParsed }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [dragging, setDragging] = useState(false);
@@ -79,7 +79,8 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
 
     for (let i = 0; i < selectedFiles.length; i++) {
       try {
-        const result = await uploadTranscript(sessionId, selectedFiles[i]);
+        const file = selectedFiles[i];
+        const result = await withSession((id) => uploadTranscript(id, file));
         allCourses.push(...(Array.isArray(result.courses) ? result.courses : []));
         // First file's profile hints win; subsequent files fill in gaps
         mergedProfile = {
@@ -112,13 +113,7 @@ export default function TranscriptUpload({ sessionId, onParsed }: Props) {
       return true;
     });
 
-    // Persist courses to the session so the backend knows the student's history
-    try {
-      await saveParsedCourses(sessionId, dedupedCourses);
-    } catch {
-      // Non-fatal: the form prefill still works, advisor will just have less context
-    }
-
+    // The courses stay in the browser and go with the advisement request.
     setStatus("done");
     onParsed({ profile: mergedProfile, courses: dedupedCourses });
   }

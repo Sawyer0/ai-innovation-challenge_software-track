@@ -1,9 +1,10 @@
 import ProfileForm from "../components/ProfileForm";
 import TranscriptUpload from "../components/TranscriptUpload";
+import type { SessionRunner } from "../api/client";
 import type { StudentProfile, TranscriptParseResult, TranscriptProfileHints, ParsedCourse } from "../types";
 
 interface Props {
-  sessionId: string;
+  withSession: SessionRunner;
   onSubmit: (profile: StudentProfile) => void;
   loading: boolean;
   prefill?: TranscriptProfileHints;
@@ -11,7 +12,7 @@ interface Props {
   onParsed: (result: TranscriptParseResult) => void;
 }
 
-export default function Intake({ sessionId, onSubmit, loading, prefill, parsedCourses, onParsed }: Props) {
+export default function Intake({ withSession, onSubmit, loading, prefill, parsedCourses, onParsed }: Props) {
   return (
     <div className="intake-layout">
       <div className="intake-header">
@@ -22,7 +23,7 @@ export default function Intake({ sessionId, onSubmit, loading, prefill, parsedCo
         </p>
       </div>
 
-      <TranscriptUpload sessionId={sessionId} onParsed={onParsed} />
+      <TranscriptUpload withSession={withSession} onParsed={onParsed} />
 
       <ProfileForm
         onSubmit={onSubmit}

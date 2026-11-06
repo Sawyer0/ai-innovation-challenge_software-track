@@ -11,11 +11,17 @@ from ..academics import (
     check_visa_compliance,
 )
 from ..database import get_db
-from ..dependencies import get_ai_service, get_current_session, get_prerequisite_service
+from ..dependencies import (
+    get_ai_service,
+    get_or_create_session,
+    get_prerequisite_service,
+    get_session_service,
+)
 from ..dependencies.rate_limit import ai_rate_limit, rate_limit
 from ..infrastructure.ai import NoProviderConfiguredError
 from ..services.ai_service import AdvisementGenerationError, AIService
 from ..services.prerequisite_service import PrerequisiteService
+from ..services.session_service import SessionService
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +97,7 @@ def _satisfied_course_codes(session: models.StudentSession) -> list[str]:
 
 @router.get("/{session_id}/advisement/eligible")
 def get_eligible_courses(
-    session: models.StudentSession = Depends(get_current_session),
+    session: models.StudentSession = Depends(get_or_create_session),
     prereq_service: PrerequisiteService = Depends(get_prerequisite_service),
 ) -> dict[str, list[str]]:
     profile = session.profile
@@ -106,15 +112,29 @@ def get_eligible_courses(
 
 @router.post("/{session_id}/advisement", response_model=schemas.AdvisementResponse)
 async def advisement(
-    chat_msg: schemas.ChatMessage,
+    chat_msg: schemas.AdvisementRequest,
     request: Request,
-    session: models.StudentSession = Depends(get_current_session),
+    session: models.StudentSession = Depends(get_or_create_session),
+    session_service: SessionService = Depends(get_session_service),
     prereq_service: PrerequisiteService = Depends(get_prerequisite_service),
     ai_service: AIService = Depends(get_ai_service),
     db: Session = Depends(get_db),
     _: None = Depends(rate_limit),
     __: None = Depends(ai_rate_limit),
 ):
+    # The browser sends the state it holds, so this works on an instance that has
+    # never seen the session (sessions are per instance on Vercel).
+    if chat_msg.profile is not None:
+        session_service.set_profile(
+            session.session_id, chat_msg.profile.model_dump(exclude_unset=True)
+        )
+    if chat_msg.courses is not None:
+        session_service.replace_courses(
+            session.session_id, [c.model_dump() for c in chat_msg.courses]
+        )
+    if chat_msg.profile is not None or chat_msg.courses is not None:
+        db.refresh(session)
+
     profile = session.profile
     if not profile:
         raise HTTPException(status_code=400, detail="Student profile not set")
