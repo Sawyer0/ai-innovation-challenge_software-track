@@ -7,6 +7,12 @@ from sqlalchemy.orm import Session
 
 from ..academics import calculate_remaining_credits, get_next_semester
 from ..infrastructure.ai import get_providers, parse_json_response
+from ..infrastructure.ai.errors import (
+    TIMEOUT_MESSAGE,
+    ProviderFailure,
+    busy_message,
+    classify_provider_error,
+)
 from ..models import StudentProfile
 from ..prompts import (
     ADVISEMENT_SYSTEM_PROMPT,
@@ -20,7 +26,24 @@ ADVISEMENT_MAX_TOKENS = 4096
 
 
 class AdvisementGenerationError(RuntimeError):
-    """Raised when no configured AI provider returns a usable advisement."""
+    """No configured AI provider returned a usable advisement. ``str(e)`` is user-safe."""
+
+    def __init__(self, message: str, status_code: int = 502, retry_after: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
+
+
+def _error_for(failures: list[ProviderFailure]) -> AdvisementGenerationError:
+    busy = [f for f in failures if f.kind == "busy"]
+    if busy and len(busy) == len(failures):
+        retry_after = min(f.retry_after or 30 for f in busy)
+        return AdvisementGenerationError(busy_message(retry_after), 503, retry_after)
+    if any(f.kind == "timeout" for f in failures):
+        return AdvisementGenerationError(TIMEOUT_MESSAGE, 504)
+    return AdvisementGenerationError(
+        "Advisement generation failed: no configured AI provider returned a usable plan."
+    )
 
 
 def _parse_advisement(
@@ -101,6 +124,7 @@ class AIService:
             student_message=student_message or "What should I take next?",
         )
 
+        failures: list[ProviderFailure] = []
         for provider in get_providers():
             try:
                 text = await provider.complete(
@@ -110,10 +134,14 @@ class AIService:
                     parse_json_response(text), next_semester, current_planned_credits
                 )
             except Exception as e:
+                failure = classify_provider_error(e)
+                failures.append(failure)
                 logger.warning(
-                    "Advisement via %s failed, trying next provider: %s", provider.name, e
+                    "Advisement via %s failed (%s), trying next provider: %s: %s",
+                    provider.name,
+                    failure.kind,
+                    type(e).__name__,
+                    e,
                 )
 
-        raise AdvisementGenerationError(
-            "Advisement generation failed: no configured AI provider returned a usable plan."
-        )
+        raise _error_for(failures)

@@ -8,6 +8,7 @@ External APIs are mocked.
 from io import BytesIO
 from typing import Any, ClassVar
 
+import httpx
 import pytest
 
 from app import models
@@ -301,6 +302,23 @@ class TestAdvisementEndpoints:
         response = client.post(f"/api/session/{session_id}/advisement", json={"message": "Help?"})
 
         assert response.status_code == 502
+
+    def test_advisement_says_when_to_retry_while_providers_are_rate_limited(
+        self, client, ai_providers
+    ):
+        request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+        for provider, wait in ((ai_providers.primary, "40"), (ai_providers.fallback, "15")):
+            response = httpx.Response(429, headers={"retry-after": wait}, request=request)
+            provider.queue(
+                httpx.HTTPStatusError("rate limited", request=request, response=response)
+            )
+        session_id = _session_with_profile(client)
+
+        response = client.post(f"/api/session/{session_id}/advisement", json={"message": "Help?"})
+
+        assert response.status_code == 503
+        assert response.headers["retry-after"] == "15"
+        assert "try again in 15 seconds" in response.json()["detail"]
 
     def test_advisement_returns_503_without_any_api_key(self, client, monkeypatch):
         def no_providers():
